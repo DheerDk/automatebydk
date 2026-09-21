@@ -33,15 +33,40 @@ export class CampaignController {
   public static async create(req: Request, res: Response, next: NextFunction) {
     try {
       const organizationId = req.organizationId!;
-      const { name, templateId, customMessage, targetAudience = { all: true }, scheduledAt } = req.body;
+      const {
+        name,
+        templateId,
+        customMessage,
+        mediaUrl,
+        websiteUrl,
+        discountCode,
+        targetAudience = { all: true, contactType: 'all', recency: 'all', leadStage: 'all', tags: [] },
+        scheduledAt,
+      } = req.body;
+
+      // Pack media and buttons into customMessage/metadata if provided
+      let finalMessage = customMessage || '';
+      if (discountCode) {
+        finalMessage += `\n\n🏷️ Use Coupon Code: *${discountCode.toUpperCase()}*`;
+      }
+      if (websiteUrl) {
+        finalMessage += `\n🌐 Shop Online: ${websiteUrl}`;
+      }
+
+      const audiencePayload = {
+        ...targetAudience,
+        mediaUrl: mediaUrl || undefined,
+        websiteUrl: websiteUrl || undefined,
+        discountCode: discountCode || undefined,
+      };
 
       const campaign = await prisma.campaign.create({
         data: {
           organizationId,
           templateId: templateId || null,
           name,
-          customMessage: customMessage || null,
-          targetAudience: JSON.stringify(targetAudience),
+          customMessage: finalMessage || null,
+          targetAudience: JSON.stringify(audiencePayload),
           status: scheduledAt ? CampaignStatus.SCHEDULED : CampaignStatus.DRAFT,
           scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
         },
@@ -66,10 +91,15 @@ export class CampaignController {
       const organizationId = req.organizationId!;
       const { id } = req.params;
 
-      const campaign = await prisma.campaign.findFirst({
-        where: { id, organizationId },
-        include: { template: true },
-      });
+      const [campaign, settings] = await Promise.all([
+        prisma.campaign.findFirst({
+          where: { id, organizationId },
+          include: { template: true },
+        }),
+        prisma.businessSettings.findUnique({
+          where: { organizationId },
+        }),
+      ]);
 
       if (!campaign) {
         throw new AppError('Campaign not found', 404);
@@ -83,20 +113,72 @@ export class CampaignController {
       const audience = JSON.parse(campaign.targetAudience || '{}');
       const customerWhere: any = { organizationId };
 
-      if (audience.tags && audience.tags.length > 0) {
+      // 1. Recency Filter
+      if (audience.recency === '7days') {
+        customerWhere.lastInteractionAt = {
+          gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+        };
+      } else if (audience.recency === '30days') {
+        customerWhere.lastInteractionAt = {
+          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        };
+      } else if (audience.recency === 'inactive_30days') {
+        customerWhere.lastInteractionAt = {
+          lte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        };
+      }
+
+      // 2. Lead Stage / Product Inquirer Filter
+      if (audience.leadStage && audience.leadStage !== 'all') {
+        if (audience.leadStage === 'INQUIRERS_ONLY') {
+          customerWhere.leads = { some: {} };
+        } else {
+          customerWhere.leads = { some: { status: audience.leadStage } };
+        }
+      }
+
+      // 3. Tags Filter
+      if (audience.tags && Array.isArray(audience.tags) && audience.tags.length > 0 && audience.tags[0]) {
         customerWhere.tags = { contains: audience.tags[0] };
       }
 
-      const customers = await prisma.customer.findMany({
+      let customers = await prisma.customer.findMany({
         where: customerWhere,
-        take: 100, // Batch limit
+        take: 250, // Safe batch limit
+      });
+
+      // 4. Contact Type Filter & Blacklist Filter
+      const excludedNumbers = ((settings as any)?.excludedNumbers || '')
+        .split(',')
+        .map((n: string) => n.replace(/\D/g, ''))
+        .filter(Boolean);
+
+      customers = customers.filter((cust) => {
+        const cleanPhone = cust.phone.replace(/\D/g, '');
+
+        // Exclude personal / family numbers permanently
+        if (excludedNumbers.some((ex: string) => cleanPhone.endsWith(ex) || ex.endsWith(cleanPhone))) {
+          return false;
+        }
+
+        const isUnsavedFormat = cust.name.startsWith('Customer +') || cust.name.startsWith('+') || cust.name.startsWith('Customer ');
+
+        if (audience.contactType === 'unsaved_only') {
+          return isUnsavedFormat;
+        } else if (audience.contactType === 'saved_only') {
+          return !isUnsavedFormat;
+        }
+
+        return true;
       });
 
       let sent = 0;
       let failed = 0;
 
-      const messageText = campaign.customMessage || campaign.template?.body || `Hello from our store!`;
+      const messageText = campaign.customMessage || campaign.template?.body || `Special announcement from our store!`;
+      const mediaUrl = audience.mediaUrl;
 
+      // Anti-Spam Human Pacing: Broadcast sequentially with natural delay
       for (const customer of customers) {
         try {
           const personalizedText = messageText.replace(/\{\{1\}\}|\{\{name\}\}/gi, customer.name);
@@ -126,12 +208,21 @@ export class CampaignController {
             organizationId,
             to: customer.phone,
             content: personalizedText,
+            mediaUrl: mediaUrl || undefined,
+            buttons: [
+              { id: '1', title: '🛍️ Browse Catalog' },
+              { id: '3', title: '🏷️ Claim Offer' },
+              { id: '4', title: '🧑‍💼 Talk to Support' },
+            ],
             conversationId: conversation.id,
             customerId: customer.id,
-            type: MessageType.TEXT,
+            type: mediaUrl ? MessageType.IMAGE : MessageType.TEXT,
           });
 
           sent++;
+
+          // Natural human pacing (1.5 - 2.5s jitter) to protect phone number from anti-spam
+          await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1000));
         } catch (err) {
           failed++;
         }
@@ -150,13 +241,13 @@ export class CampaignController {
       await NotificationService.create({
         organizationId,
         title: 'Broadcast Campaign Completed',
-        message: `Campaign "${campaign.name}" dispatched to ${sent} customers (${failed} failed).`,
+        message: `Campaign "${campaign.name}" dispatched to ${sent} targeted customers (${failed} failed).`,
         type: 'CAMPAIGN',
       });
 
       return res.json({
         success: true,
-        message: `Campaign sent to ${sent} customers`,
+        message: `Campaign sent to ${sent} targeted customers without spamming excluded contacts.`,
         data: updated,
       });
     } catch (error) {
