@@ -286,13 +286,28 @@ export class BaileysService {
     buttons?: Array<{ id: string; title: string }>;
   }): Promise<{ whatsappMessageId: string; success: boolean }> {
     const { organizationId, to, content, mediaUrl, location, buttons } = params;
-    const session = this.sessions.get(organizationId);
+    let session = this.sessions.get(organizationId);
 
+    // If session was closed in memory but credentials exist on disk, attempt quick auto-reconnect
     if (!session || session.status !== 'CONNECTED' || !session.sock) {
-      throw new Error(`WhatsApp QR session is not connected for organization ${organizationId}`);
+      const sessionDir = path.join(this.sessionsBaseDir, organizationId);
+      if (fs.existsSync(path.join(sessionDir, 'creds.json'))) {
+        logger.info(`[Baileys] Session disconnected in memory, auto-resuming for org ${organizationId}...`);
+        await this.initSession(organizationId);
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        session = this.sessions.get(organizationId);
+      }
     }
 
-    const cleanTo = to.replace(/\D/g, '');
+    if (!session || session.status !== 'CONNECTED' || !session.sock) {
+      throw new Error(`WhatsApp QR session is not connected for organization ${organizationId}. Please connect WhatsApp in Settings.`);
+    }
+
+    let cleanTo = to.replace(/\D/g, '');
+    // If standard 10-digit number (e.g. Indian mobile number), prepend 91 country code
+    if (cleanTo.length === 10) {
+      cleanTo = `91${cleanTo}`;
+    }
     
     // Resolve proper JID (prioritizing mapped JID if incoming was via @lid)
     let jid = this.jidMap.get(to) || this.jidMap.get(cleanTo);
@@ -308,6 +323,15 @@ export class BaileysService {
 
     let sentMsg: any;
 
+    // Append quick interactive action buttons cleanly
+    let formattedContent = content;
+    if (buttons && buttons.length > 0) {
+      formattedContent += `\n\n👇 *Quick Options:*`;
+      buttons.forEach((b: any) => {
+        formattedContent += `\n▶️ *${b.title || b.text}*`;
+      });
+    }
+
     if (location) {
       try {
         sentMsg = await session.sock.sendMessage(jid, {
@@ -315,50 +339,29 @@ export class BaileysService {
             degreesLatitude: location.latitude || 12.9716,
             degreesLongitude: location.longitude || 77.5946,
             name: location.name || 'Store Location',
-            address: location.address || content,
+            address: location.address || formattedContent,
           },
         });
       } catch (locErr) {
         sentMsg = await session.sock.sendMessage(jid, {
-          text: `📍 *Store Location:*\n${content}`,
+          text: `📍 *Store Location:*\n${formattedContent}`,
         });
       }
-    } else if (mediaUrl) {
+    } else if (mediaUrl && (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://'))) {
       try {
         sentMsg = await session.sock.sendMessage(jid, {
           image: { url: mediaUrl },
-          caption: content,
+          caption: formattedContent,
         });
       } catch (mediaErr: any) {
         logger.warn(`[Baileys] Media send failed (${mediaErr.message}), falling back to text message.`);
         sentMsg = await session.sock.sendMessage(jid, {
-          text: `${content}\n\n📷 Image: ${mediaUrl}`,
-        });
-      }
-    } else if (buttons && buttons.length > 0) {
-      try {
-        sentMsg = await session.sock.sendMessage(jid, {
-          text: content,
-          footer: 'AutoMate by DK',
-          buttons: buttons.map((b: any, idx: number) => ({
-            buttonId: b.id || `btn_${idx + 1}`,
-            buttonText: { displayText: b.title || b.text },
-            type: 1,
-          })),
-          headerType: 1,
-        });
-      } catch (btnErr) {
-        let buttonText = `${content}\n\n👇 *Click or reply with your choice:*`;
-        buttons.forEach((b: any) => {
-          buttonText += `\n▶️ *${b.title || b.text}*`;
-        });
-        sentMsg = await session.sock.sendMessage(jid, {
-          text: buttonText,
+          text: `${formattedContent}\n\n📷 Promo Image: ${mediaUrl}`,
         });
       }
     } else {
       sentMsg = await session.sock.sendMessage(jid, {
-        text: content,
+        text: formattedContent,
       });
     }
 

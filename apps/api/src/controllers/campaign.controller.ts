@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../utils/prisma.js';
+import { logger } from '../utils/logger.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { WhatsAppService } from '../services/whatsapp.service.js';
 import { NotificationService } from '../services/notification.service.js';
-import { CampaignStatus, MessageType } from '@chatflow/shared';
+import { CampaignStatus, MessageStatus, MessageType } from '@chatflow/shared';
 
 export class CampaignController {
   public static async list(req: Request, res: Response, next: NextFunction) {
@@ -129,9 +130,12 @@ export class CampaignController {
               .filter(Boolean);
 
         for (const rawNum of rawList) {
-          const cleanPhone = rawNum.replace(/[^\d+]/g, '');
-          const cleanDigits = rawNum.replace(/\D/g, '');
+          let cleanDigits = rawNum.replace(/\D/g, '');
           if (!cleanDigits || cleanDigits.length < 5) continue;
+          if (cleanDigits.length === 10) {
+            cleanDigits = `91${cleanDigits}`;
+          }
+          const cleanPhone = `+${cleanDigits}`;
 
           // Check blacklist exclusion permanently
           if (excludedNumbers.some((ex: string) => cleanDigits.endsWith(ex) || ex.endsWith(cleanDigits))) {
@@ -152,7 +156,7 @@ export class CampaignController {
               data: {
                 organizationId,
                 name: `Customer ${cleanPhone}`,
-                phone: cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`,
+                phone: cleanPhone,
               },
             });
           }
@@ -221,6 +225,23 @@ export class CampaignController {
         });
       }
 
+      if (customers.length === 0) {
+        await prisma.campaign.update({
+          where: { id },
+          data: {
+            status: CampaignStatus.COMPLETED,
+            sentCount: 0,
+            deliveredCount: 0,
+            failedCount: 0,
+          },
+        });
+
+        return res.json({
+          success: false,
+          message: 'No eligible recipients found. Please verify the numbers entered or ensure they are not on the excluded list.',
+        });
+      }
+
       let sent = 0;
       let failed = 0;
 
@@ -253,7 +274,7 @@ export class CampaignController {
             });
           }
 
-          await WhatsAppService.sendMessage({
+          const sendResult = await WhatsAppService.sendMessage({
             organizationId,
             to: customer.phone,
             content: personalizedText,
@@ -268,12 +289,19 @@ export class CampaignController {
             type: mediaUrl ? MessageType.IMAGE : MessageType.TEXT,
           });
 
-          sent++;
+          if (sendResult.status === MessageStatus.FAILED) {
+            failed++;
+          } else {
+            sent++;
+          }
 
           // Natural human pacing (1.5 - 2.5s jitter) to protect phone number from anti-spam
-          await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1000));
-        } catch (err) {
+          if (customers.length > 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1000));
+          }
+        } catch (err: any) {
           failed++;
+          logger.error(`[CampaignController] Error sending to ${customer.phone}:`, err?.message || err);
         }
       }
 
