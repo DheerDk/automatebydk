@@ -1,0 +1,36 @@
+{
+  "name": "chatflow-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-Tenant WhatsApp AI Automation SaaS Platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:api": "npm run dev --workspace=@chatflow/api",
+    "dev:web": "npm run dev --workspace=@chatflow/web",
+    "build": "npm run build --workspaces --if-present",
+    "build:shared": "npm run build --workspace=@chatflow/shared",
+    "build:api": "npm run build --workspace=@chatflow/api",
+    "build:web": "npm run build --workspace=@chatflow/web",
+    "test": "npm run test --workspaces --if-present",
+    "db:generate": "npm run db:generate --workspace=@chatflow/api",
+    "db:push": "npm run db:push --workspace=@chatflow/api",
+    "db:seed": "npm run db:seed --workspace=@chatflow/api",
+    "db:migrate": "npm run db:migrate --workspace=@chatflow/api",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "keywords": [
+    "whatsapp",
+    "saas",
+    "automation",
+    "ai",
+    "crm",
+    "multi-tenant",
+    "meta-cloud-api"
+  ],
+  "author": "ChatFlow AI Team",
+  "license": "MIT"
+}
