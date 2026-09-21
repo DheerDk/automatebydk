@@ -39,7 +39,8 @@ import {
   Sparkle,
   PhoneCall,
   Info,
-  Edit3
+  Edit3,
+  Globe
 } from 'lucide-react';
 
 interface FlowBranch {
@@ -48,8 +49,10 @@ interface FlowBranch {
   value: string; // e.g. "1", "price", "order"
   title: string;
   actions: {
-    type: 'SEND_MESSAGE' | 'SEND_CATALOG' | 'CREATE_LEAD' | 'ADD_TAGS' | 'HUMAN_HANDOFF';
+    type: 'SEND_MESSAGE' | 'SEND_CATALOG' | 'SEND_LOCATION' | 'SEND_WEBSITE' | 'CREATE_LEAD' | 'ADD_TAGS' | 'HUMAN_HANDOFF';
     text?: string;
+    url?: string;
+    address?: string;
     leadStatus?: string;
     tags?: string[];
   }[];
@@ -157,12 +160,30 @@ export const AutomationsPage: React.FC = () => {
       title: 'Option 5: Store Location & Timings',
       actions: [
         {
-          type: 'SEND_MESSAGE',
+          type: 'SEND_LOCATION',
+          address: 'Main Commercial Boulevard, Store #42',
           text: '📍 *Store Location & Hours:*\n🏢 Main Commercial Boulevard, Store #42\n🗺️ GPS Map: https://maps.google.com/?q=Store\n⏰ Hours: Mon-Sat (10:00 AM - 9:00 PM)',
         },
         {
           type: 'ADD_TAGS',
           tags: ['Store-Visit-Enquiry'],
+        },
+      ],
+    },
+    {
+      id: 'b6',
+      conditionType: 'NUMBER_CHOICE',
+      value: '6',
+      title: 'Option 6: Visit Online Website',
+      actions: [
+        {
+          type: 'SEND_WEBSITE',
+          url: 'https://automatebydk.pages.dev',
+          text: '🌐 *Visit Our Official Online Store:*\n🔗 https://automatebydk.pages.dev\n\n✨ Browse full catalog, check new arrivals, and place orders directly!',
+        },
+        {
+          type: 'ADD_TAGS',
+          tags: ['Website-Visitor'],
         },
       ],
     },
@@ -173,7 +194,7 @@ export const AutomationsPage: React.FC = () => {
     text: string;
   }>({
     type: 'SEND_MESSAGE',
-    text: '👋 *Welcome to AutoMate by DK!*\n\nReply with a number to choose an option:\n1️⃣ 🛍️ Browse Trending Products\n2️⃣ 🔍 Search a Product\n3️⃣ 🏷️ Offers & Deals\n4️⃣ 🧑‍💼 Talk to Support\n5️⃣ 📍 Store Location & Hours',
+    text: '👋 *Welcome to AutoMate by DK!*\n\nTap a button below or reply with a number:\n1️⃣ 🛍️ Browse Trending Products\n2️⃣ 🔍 Search a Product\n3️⃣ 🏷️ Offers & Deals\n4️⃣ 🧑‍💼 Talk to Support\n5️⃣ 📍 Store Location & Hours\n6️⃣ 🌐 Visit Store Website',
   });
 
   const [activeBranchId, setActiveBranchId] = useState<string>('b1');
@@ -319,7 +340,11 @@ export const AutomationsPage: React.FC = () => {
           if (act.type === 'SEND_MESSAGE') {
             reply = act.text || 'Action executed.';
           } else if (act.type === 'SEND_CATALOG') {
-            reply = '🛍️ *Trending Catalog Products:*\n1. Premium Phone Case - ₹499\n2. Fast Wireless Charger 20W - ₹899\n3. Noise Cancelling Earbuds - ₹1,499\n\n👉 Reply with item name to order!';
+            reply = '🛍️ *Trending Catalog Products:*\n1. Premium Phone Case - ₹499\n2. Fast Wireless Charger 20W - ₹899\n3. Noise Cancelling Earbuds - ₹1,499\n\n👉 Tap an option below to order!';
+          } else if (act.type === 'SEND_LOCATION') {
+            reply = act.text || '📍 *Store Location & Timings:*\n🏢 Main Commercial Boulevard, Store #42\n🗺️ Google Maps: https://maps.google.com/?q=Store\n⏰ Hours: Mon-Sat (10:00 AM - 9:00 PM)';
+          } else if (act.type === 'SEND_WEBSITE') {
+            reply = act.text || '🌐 *Visit Our Official Online Store:*\n🔗 https://automatebydk.pages.dev\n\n✨ Browse full catalog, check new arrivals, and place orders directly!';
           } else if (act.type === 'HUMAN_HANDOFF') {
             reply = act.text || '🧑‍💼 Store manager has been alerted!';
           }
@@ -636,11 +661,65 @@ export const AutomationsPage: React.FC = () => {
                         >
                           <option value="SEND_MESSAGE">💬 Send Text Message</option>
                           <option value="SEND_CATALOG">🛍️ Send Product Catalog</option>
+                          <option value="SEND_LOCATION">📍 Send Store Location (Google Maps Pin)</option>
+                          <option value="SEND_WEBSITE">🌐 Send Official Store Website Link</option>
                           <option value="HUMAN_HANDOFF">🧑‍💼 Transfer to Support Manager</option>
                         </select>
                       </div>
 
-                      {selectedBranch.actions[0]?.type !== 'SEND_CATALOG' ? (
+                      {selectedBranch.actions[0]?.type === 'SEND_LOCATION' ? (
+                        <div className="space-y-2">
+                          <div className="p-3 bg-slate-950/60 border border-emerald-500/30 rounded-lg text-xs text-slate-300 flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                            <span>
+                              Sends store address, opening hours, Google Maps GPS link, and a native WhatsApp Location Pin.
+                            </span>
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={selectedBranch.actions[0]?.text || ''}
+                            onChange={(e) => {
+                              const updated = branches.map((b) => {
+                                if (b.id === selectedBranch.id) {
+                                  const acts = [...b.actions];
+                                  acts[0] = { ...acts[0], text: e.target.value };
+                                  return { ...b, actions: acts };
+                                }
+                                return b;
+                              });
+                              setBranches(updated);
+                            }}
+                            placeholder="Store address and directions..."
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-100 font-sans focus:ring-1 focus:ring-emerald-500 focus:outline-none leading-relaxed"
+                          />
+                        </div>
+                      ) : selectedBranch.actions[0]?.type === 'SEND_WEBSITE' ? (
+                        <div className="space-y-2">
+                          <div className="p-3 bg-slate-950/60 border border-blue-500/30 rounded-lg text-xs text-slate-300 flex items-center gap-2">
+                            <Globe className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                            <span>
+                              Delivers direct website catalog link with preview and shopping instructions.
+                            </span>
+                          </div>
+                          <input
+                            type="text"
+                            value={selectedBranch.actions[0]?.url || 'https://automatebydk.pages.dev'}
+                            onChange={(e) => {
+                              const updated = branches.map((b) => {
+                                if (b.id === selectedBranch.id) {
+                                  const acts = [...b.actions];
+                                  acts[0] = { ...acts[0], url: e.target.value };
+                                  return { ...b, actions: acts };
+                                }
+                                return b;
+                              });
+                              setBranches(updated);
+                            }}
+                            placeholder="https://yourwebsite.com"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-blue-400 font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                          />
+                        </div>
+                      ) : selectedBranch.actions[0]?.type !== 'SEND_CATALOG' ? (
                         <textarea
                           rows={4}
                           value={selectedBranch.actions[0]?.text || ''}
@@ -788,10 +867,10 @@ export const AutomationsPage: React.FC = () => {
                   {simMessages.map((m, idx) => (
                     <div
                       key={idx}
-                      className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                      className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
                     >
                       <div
-                        className={`max-w-[85%] rounded-2xl px-3.5 py-2 whitespace-pre-wrap leading-relaxed shadow-md ${
+                        className={`max-w-[90%] rounded-2xl px-3.5 py-2 whitespace-pre-wrap leading-relaxed shadow-md ${
                           m.sender === 'user'
                             ? 'bg-emerald-600 text-white rounded-tr-none'
                             : 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700'
@@ -799,6 +878,32 @@ export const AutomationsPage: React.FC = () => {
                       >
                         {m.text}
                       </div>
+
+                      {/* Render Interactive WhatsApp Clickable Action Buttons for Bot Message */}
+                      {m.sender === 'bot' && idx === simMessages.length - 1 && (
+                        <div className="flex flex-wrap gap-1.5 pt-2 max-w-[95%]">
+                          {branches.map((b) => (
+                            <button
+                              key={b.id}
+                              onClick={() => handleSimSend(b.value)}
+                              className="px-2.5 py-1.5 bg-slate-900 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 text-[10px] font-bold rounded-xl border border-emerald-500/40 shadow-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                            >
+                              {b.actions[0]?.type === 'SEND_LOCATION' ? (
+                                <MapPin className="w-3 h-3 text-emerald-400" />
+                              ) : b.actions[0]?.type === 'SEND_WEBSITE' ? (
+                                <Globe className="w-3 h-3 text-blue-400" />
+                              ) : b.actions[0]?.type === 'SEND_CATALOG' ? (
+                                <ShoppingBag className="w-3 h-3 text-amber-400" />
+                              ) : b.actions[0]?.type === 'HUMAN_HANDOFF' ? (
+                                <UserCheck className="w-3 h-3 text-purple-400" />
+                              ) : (
+                                <Sparkles className="w-3 h-3 text-emerald-400" />
+                              )}
+                              <span>{b.title}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

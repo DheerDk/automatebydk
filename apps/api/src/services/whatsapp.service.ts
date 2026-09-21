@@ -12,6 +12,8 @@ export interface SendMessageOptions {
   content: string;
   type?: MessageType;
   mediaUrl?: string;
+  location?: { latitude: number; longitude: number; name?: string; address?: string };
+  buttons?: Array<{ id: string; title: string }>;
   metadata?: any;
   conversationId?: string;
   customerId?: string;
@@ -40,10 +42,10 @@ export class WhatsAppService {
   }
 
   /**
-   * Send WhatsApp Message (Text, Image, Template, Interactive, Product)
+   * Send WhatsApp Message (Text, Image, Location, Buttons, Template, Interactive)
    */
   public static async sendMessage(options: SendMessageOptions): Promise<{ whatsappMessageId: string; status: MessageStatus; content?: string; mediaUrl?: string }> {
-    const { organizationId, to, content, type = MessageType.TEXT, mediaUrl, metadata, conversationId, customerId } = options;
+    const { organizationId, to, content, type = MessageType.TEXT, mediaUrl, location, buttons, metadata, conversationId, customerId } = options;
 
     let whatsappMessageId = `mock_wa_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     let status: MessageStatus = MessageStatus.SENT;
@@ -56,6 +58,8 @@ export class WhatsAppService {
           to,
           content,
           mediaUrl,
+          location,
+          buttons,
         });
         whatsappMessageId = baileysRes.whatsappMessageId;
         status = MessageStatus.SENT;

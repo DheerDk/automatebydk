@@ -233,19 +233,24 @@ export class BaileysService {
     this.jidMap.set(rawNumber, remoteJid);
     this.jidMap.set(rawNumber.replace(/\D/g, ''), remoteJid);
 
-    // Extract text content
+    // Extract text content and button responses
     let text = '';
     const m = msg.message;
     if (m?.conversation) {
       text = m.conversation;
     } else if (m?.extendedTextMessage?.text) {
       text = m.extendedTextMessage.text;
-    } else if (m?.buttonsResponseMessage?.selectedDisplayText) {
-      text = m.buttonsResponseMessage.selectedDisplayText;
-    } else if (m?.listResponseMessage?.title) {
-      text = m.listResponseMessage.title;
-    } else if (m?.templateButtonReplyMessage?.selectedDisplayText) {
-      text = m.templateButtonReplyMessage.selectedDisplayText;
+    } else if (m?.buttonsResponseMessage?.selectedButtonId || m?.buttonsResponseMessage?.selectedDisplayText) {
+      text = m.buttonsResponseMessage.selectedButtonId || m.buttonsResponseMessage.selectedDisplayText || '';
+    } else if (m?.listResponseMessage?.singleSelectReply?.selectedRowId || m?.listResponseMessage?.title) {
+      text = m.listResponseMessage.singleSelectReply?.selectedRowId || m.listResponseMessage.title || '';
+    } else if (m?.templateButtonReplyMessage?.selectedId || m?.templateButtonReplyMessage?.selectedDisplayText) {
+      text = m.templateButtonReplyMessage.selectedId || m.templateButtonReplyMessage.selectedDisplayText || '';
+    } else if ((m as any)?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson) {
+      try {
+        const params = JSON.parse((m as any).interactiveResponseMessage.nativeFlowResponseMessage.paramsJson);
+        text = params.id || params.title || '';
+      } catch {}
     }
 
     if (!text || text.trim().length === 0) return;
@@ -270,15 +275,17 @@ export class BaileysService {
   }
 
   /**
-   * Send outbound message via active Baileys session
+   * Send outbound message via active Baileys session (Text, Image, Location, Buttons)
    */
   public static async sendMessage(params: {
     organizationId: string;
     to: string;
     content: string;
     mediaUrl?: string;
+    location?: { latitude: number; longitude: number; name?: string; address?: string };
+    buttons?: Array<{ id: string; title: string }>;
   }): Promise<{ whatsappMessageId: string; success: boolean }> {
-    const { organizationId, to, content, mediaUrl } = params;
+    const { organizationId, to, content, mediaUrl, location, buttons } = params;
     const session = this.sessions.get(organizationId);
 
     if (!session || session.status !== 'CONNECTED' || !session.sock) {
@@ -301,7 +308,22 @@ export class BaileysService {
 
     let sentMsg: any;
 
-    if (mediaUrl) {
+    if (location) {
+      try {
+        sentMsg = await session.sock.sendMessage(jid, {
+          location: {
+            degreesLatitude: location.latitude || 12.9716,
+            degreesLongitude: location.longitude || 77.5946,
+            name: location.name || 'Store Location',
+            address: location.address || content,
+          },
+        });
+      } catch (locErr) {
+        sentMsg = await session.sock.sendMessage(jid, {
+          text: `📍 *Store Location:*\n${content}`,
+        });
+      }
+    } else if (mediaUrl) {
       try {
         sentMsg = await session.sock.sendMessage(jid, {
           image: { url: mediaUrl },
@@ -311,6 +333,27 @@ export class BaileysService {
         logger.warn(`[Baileys] Media send failed (${mediaErr.message}), falling back to text message.`);
         sentMsg = await session.sock.sendMessage(jid, {
           text: `${content}\n\n📷 Image: ${mediaUrl}`,
+        });
+      }
+    } else if (buttons && buttons.length > 0) {
+      try {
+        sentMsg = await session.sock.sendMessage(jid, {
+          text: content,
+          footer: 'AutoMate by DK',
+          buttons: buttons.map((b: any, idx: number) => ({
+            buttonId: b.id || `btn_${idx + 1}`,
+            buttonText: { displayText: b.title || b.text },
+            type: 1,
+          })),
+          headerType: 1,
+        });
+      } catch (btnErr) {
+        let buttonText = `${content}\n\n👇 *Click or reply with your choice:*`;
+        buttons.forEach((b: any) => {
+          buttonText += `\n▶️ *${b.title || b.text}*`;
+        });
+        sentMsg = await session.sock.sendMessage(jid, {
+          text: buttonText,
         });
       }
     } else {

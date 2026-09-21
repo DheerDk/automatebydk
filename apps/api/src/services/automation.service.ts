@@ -210,9 +210,63 @@ export class AutomationService {
             to: customer.phone,
             content: catalogMsg,
             mediaUrl: products[0]?.images ? JSON.parse(products[0].images)[0] : undefined,
+            buttons: [
+              { id: '1', title: '🛍️ View More Products' },
+              { id: '3', title: '🏷️ VIP Deals' },
+              { id: '4', title: '🧑‍💼 Talk to Support' },
+            ],
             conversationId,
             customerId: customer.id,
           });
+
+        case 'SEND_LOCATION': {
+          const settings = await prisma.businessSettings.findUnique({
+            where: { organizationId },
+          });
+          const storeAddress = payload.address || settings?.address || 'Main Fashion & Electronics Store, MG Road';
+          const storeHours = settings?.businessHours || 'Mon-Sat (10:00 AM - 09:00 PM)';
+          const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(storeAddress)}`;
+
+          const locText = payload.text || `📍 *Store Location & Timings:*\n🏢 ${storeAddress}\n🗺️ Google Maps: ${mapsUrl}\n⏰ Hours: ${storeHours}`;
+
+          return await WhatsAppService.sendMessage({
+            organizationId,
+            to: customer.phone,
+            content: locText,
+            location: {
+              latitude: payload.latitude || 12.9716,
+              longitude: payload.longitude || 77.5946,
+              name: 'Store Location',
+              address: storeAddress,
+            },
+            buttons: [
+              { id: '1', title: '🛍️ Browse Products' },
+              { id: '5', title: '🌐 Store Website' },
+            ],
+            conversationId,
+            customerId: customer.id,
+          });
+        }
+
+        case 'SEND_WEBSITE': {
+          const settings = await prisma.businessSettings.findUnique({
+            where: { organizationId },
+          });
+          const websiteUrl = payload.url || settings?.website || 'https://automatebydk.pages.dev';
+          const webText = payload.text || `🌐 *Visit Our Official Online Store:*\n🔗 ${websiteUrl}\n\n✨ Browse our complete catalog, view latest discounts, and shop securely online!`;
+
+          return await WhatsAppService.sendMessage({
+            organizationId,
+            to: customer.phone,
+            content: webText,
+            buttons: [
+              { id: '1', title: '🛍️ Browse Products' },
+              { id: '3', title: '🏷️ Claim VIP Offer' },
+            ],
+            conversationId,
+            customerId: customer.id,
+          });
+        }
 
         case 'HUMAN_HANDOFF':
           if (conversationId) {
