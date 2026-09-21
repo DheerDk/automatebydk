@@ -17,13 +17,18 @@
     "build:shared": "npm run build --workspace=@chatflow/shared",
     "build:api": "npm run build --workspace=@chatflow/api",
     "build:web": "npm run build --workspace=@chatflow/web",
-    "build:prod": "npm run build:shared && npm run db:generate && npm run build:api && npm run db:push",
+    "build:prod": "npm install --include=dev && npm run build:shared && npm run db:generate && npm run build:api && npm run db:push",
     "test": "npm run test --workspaces --if-present",
     "db:generate": "npm run db:generate --workspace=@chatflow/api",
     "db:push": "npm run db:push --workspace=@chatflow/api",
     "db:seed": "npm run db:seed --workspace=@chatflow/api",
     "db:migrate": "npm run db:migrate --workspace=@chatflow/api",
     "lint": "npm run lint --workspaces --if-present"
+  },
+  "dependencies": {
+    "prisma": "^5.22.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3"
   },
   "keywords": [
     "whatsapp",
