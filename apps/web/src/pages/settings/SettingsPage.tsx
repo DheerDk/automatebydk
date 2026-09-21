@@ -116,6 +116,7 @@ export const SettingsPage: React.FC = () => {
   // QR Session Listeners
   useEffect(() => {
     socketService.connect();
+    fetchQrStatus();
 
     const handleQrUpdate = (data: any) => {
       if (data.qrDataUrl) {
@@ -148,13 +149,27 @@ export const SettingsPage: React.FC = () => {
     };
   }, []);
 
+  // Poll QR status when waiting for pairing
+  useEffect(() => {
+    if (qrStatus === 'QR_READY' || isQrStarting) {
+      const interval = setInterval(() => {
+        fetchQrStatus();
+      }, 2500);
+      return () => clearInterval(interval);
+    }
+  }, [qrStatus, isQrStarting]);
+
   const fetchQrStatus = async () => {
     try {
       const res: any = await api.get('/whatsapp/qr/status');
       if (res.data) {
         setQrStatus(res.data.status);
-        setQrDataUrl(res.data.qrDataUrl);
-        setQrPhone(res.data.phone);
+        if (res.data.qrDataUrl) {
+          setQrDataUrl(res.data.qrDataUrl);
+        }
+        if (res.data.phone) {
+          setQrPhone(res.data.phone);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch QR status:', err);
@@ -167,9 +182,15 @@ export const SettingsPage: React.FC = () => {
       const res: any = await api.post('/whatsapp/qr/start');
       if (res.data) {
         setQrStatus(res.data.status);
-        setQrDataUrl(res.data.qrDataUrl);
-        setQrPhone(res.data.phone);
+        if (res.data.qrDataUrl) {
+          setQrDataUrl(res.data.qrDataUrl);
+        }
+        if (res.data.phone) {
+          setQrPhone(res.data.phone);
+        }
       }
+      // Trigger an immediate follow-up status check in 1 second
+      setTimeout(fetchQrStatus, 1200);
     } catch (err: any) {
       alert(err.message || 'Failed to initialize QR session');
     } finally {

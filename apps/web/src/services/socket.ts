@@ -6,7 +6,8 @@ class SocketService {
   public connect(token?: string) {
     if (this.socket?.connected) return this.socket;
 
-    const socketUrl = window.location.origin;
+    const rawApi = (import.meta as any).env?.VITE_API_URL || '';
+    const socketUrl = rawApi ? rawApi.replace(/\/api\/?$/, '') : window.location.origin;
 
     this.socket = io(socketUrl, {
       auth: { token: token || localStorage.getItem('chatflow_token') },
