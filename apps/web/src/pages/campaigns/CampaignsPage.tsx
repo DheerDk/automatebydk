@@ -155,7 +155,11 @@ export const CampaignsPage: React.FC = () => {
     setIsLaunchingId(id);
     try {
       const res: any = await api.post(`/campaigns/${id}/launch`);
-      alert(res.message || 'Campaign dispatched successfully!');
+      if (res.success === false) {
+        alert(`⚠️ ${res.message || 'Campaign was not delivered. Please verify recipient numbers or check WhatsApp connection.'}`);
+      } else {
+        alert(`✅ ${res.message || 'Campaign dispatched successfully!'}`);
+      }
       fetchCampaigns();
     } catch (err: any) {
       alert(err.message || 'Failed to launch campaign');
@@ -174,6 +178,26 @@ export const CampaignsPage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* WhatsApp Connection Notice */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-200 text-xs shadow-md">
+        <div className="flex items-center gap-2.5">
+          <Smartphone className="w-5 h-5 text-amber-400 shrink-0" />
+          <span>
+            <strong>Need Live WhatsApp Delivery?</strong> Link your phone by scanning the QR code in{' '}
+            <a href="/settings?tab=whatsapp" className="underline font-bold text-amber-300 hover:text-amber-100">
+              Settings ➔ WhatsApp (Scan QR)
+            </a>{' '}
+            to send broadcasts directly from your number.
+          </span>
+        </div>
+        <a
+          href="/settings?tab=whatsapp"
+          className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl whitespace-nowrap self-start sm:self-auto text-xs shadow-xs"
+        >
+          Check / Link WhatsApp
+        </a>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 rounded-2xl border border-slate-700 shadow-xl text-white">
         <div>
