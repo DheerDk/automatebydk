@@ -10,7 +10,9 @@ export class SocketServer {
   public static initialize(httpServer: HttpServer) {
     this.io = new SocketIOServer(httpServer, {
       cors: {
-        origin: [config.frontendUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+        origin: (origin: any, callback: any) => {
+          callback(null, true);
+        },
         methods: ['GET', 'POST'],
         credentials: true,
       },
