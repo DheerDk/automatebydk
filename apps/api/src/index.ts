@@ -52,9 +52,11 @@ const authLimiter = rateLimit({
   message: { success: false, message: 'Too many requests from this IP, please try again after 15 minutes.' },
 });
 app.use('/api/auth', authLimiter);
+app.use('/auth', authLimiter);
 
-// Mount Master API
+// Mount Master API (both at /api and / for seamless hosting)
 app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
 // Central Error Handler
 app.use(errorHandler);
