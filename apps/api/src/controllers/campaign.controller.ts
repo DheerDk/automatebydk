@@ -111,66 +111,115 @@ export class CampaignController {
       });
 
       const audience = JSON.parse(campaign.targetAudience || '{}');
-      const customerWhere: any = { organizationId };
-
-      // 1. Recency Filter
-      if (audience.recency === '7days') {
-        customerWhere.lastInteractionAt = {
-          gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-        };
-      } else if (audience.recency === '30days') {
-        customerWhere.lastInteractionAt = {
-          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-        };
-      } else if (audience.recency === 'inactive_30days') {
-        customerWhere.lastInteractionAt = {
-          lte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-        };
-      }
-
-      // 2. Lead Stage / Product Inquirer Filter
-      if (audience.leadStage && audience.leadStage !== 'all') {
-        if (audience.leadStage === 'INQUIRERS_ONLY') {
-          customerWhere.leads = { some: {} };
-        } else {
-          customerWhere.leads = { some: { status: audience.leadStage } };
-        }
-      }
-
-      // 3. Tags Filter
-      if (audience.tags && Array.isArray(audience.tags) && audience.tags.length > 0 && audience.tags[0]) {
-        customerWhere.tags = { contains: audience.tags[0] };
-      }
-
-      let customers = await prisma.customer.findMany({
-        where: customerWhere,
-        take: 250, // Safe batch limit
-      });
-
-      // 4. Contact Type Filter & Blacklist Filter
       const excludedNumbers = ((settings as any)?.excludedNumbers || '')
         .split(',')
         .map((n: string) => n.replace(/\D/g, ''))
         .filter(Boolean);
 
-      customers = customers.filter((cust) => {
-        const cleanPhone = cust.phone.replace(/\D/g, '');
+      let customers: any[] = [];
+      const specificNumbersRaw = audience.specificNumbers;
 
-        // Exclude personal / family numbers permanently
-        if (excludedNumbers.some((ex: string) => cleanPhone.endsWith(ex) || ex.endsWith(cleanPhone))) {
-          return false;
+      if (audience.targetMode === 'specific' || (specificNumbersRaw && String(specificNumbersRaw).trim().length > 0)) {
+        // Targeted Specific Phone Numbers / Contacts Mode
+        const rawList: string[] = Array.isArray(specificNumbersRaw)
+          ? specificNumbersRaw
+          : String(specificNumbersRaw || '')
+              .split(/[\n,;]+/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+
+        for (const rawNum of rawList) {
+          const cleanPhone = rawNum.replace(/[^\d+]/g, '');
+          const cleanDigits = rawNum.replace(/\D/g, '');
+          if (!cleanDigits || cleanDigits.length < 5) continue;
+
+          // Check blacklist exclusion permanently
+          if (excludedNumbers.some((ex: string) => cleanDigits.endsWith(ex) || ex.endsWith(cleanDigits))) {
+            continue;
+          }
+
+          // Try finding existing customer in CRM
+          let cust = await prisma.customer.findFirst({
+            where: {
+              organizationId,
+              phone: { contains: cleanDigits.slice(-10) },
+            },
+          });
+
+          // If not in database, create a customer profile automatically
+          if (!cust) {
+            cust = await prisma.customer.create({
+              data: {
+                organizationId,
+                name: `Customer ${cleanPhone}`,
+                phone: cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`,
+              },
+            });
+          }
+
+          if (cust && !customers.some((c) => c.id === cust!.id)) {
+            customers.push(cust);
+          }
+        }
+      } else {
+        // Automated Audience Segmentation Filters
+        const customerWhere: any = { organizationId };
+
+        // 1. Recency Filter
+        if (audience.recency === '7days') {
+          customerWhere.lastInteractionAt = {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          };
+        } else if (audience.recency === '30days') {
+          customerWhere.lastInteractionAt = {
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          };
+        } else if (audience.recency === 'inactive_30days') {
+          customerWhere.lastInteractionAt = {
+            lte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          };
         }
 
-        const isUnsavedFormat = cust.name.startsWith('Customer +') || cust.name.startsWith('+') || cust.name.startsWith('Customer ');
-
-        if (audience.contactType === 'unsaved_only') {
-          return isUnsavedFormat;
-        } else if (audience.contactType === 'saved_only') {
-          return !isUnsavedFormat;
+        // 2. Lead Stage / Product Inquirer Filter
+        if (audience.leadStage && audience.leadStage !== 'all') {
+          if (audience.leadStage === 'INQUIRERS_ONLY') {
+            customerWhere.leads = { some: {} };
+          } else {
+            customerWhere.leads = { some: { status: audience.leadStage } };
+          }
         }
 
-        return true;
-      });
+        // 3. Tags Filter
+        if (audience.tags && Array.isArray(audience.tags) && audience.tags.length > 0 && audience.tags[0]) {
+          customerWhere.tags = { contains: audience.tags[0] };
+        }
+
+        let fetchedCustomers = await prisma.customer.findMany({
+          where: customerWhere,
+          take: 250, // Safe batch limit
+        });
+
+        // 4. Contact Type Filter & Blacklist Filter
+        customers = fetchedCustomers.filter((cust) => {
+          const cleanPhone = cust.phone.replace(/\D/g, '');
+
+          // Exclude personal / family numbers permanently
+          if (excludedNumbers.some((ex: string) => cleanPhone.endsWith(ex) || ex.endsWith(cleanPhone))) {
+            return false;
+          }
+
+          const isUnsavedFormat =
+            cust.name.startsWith('Customer +') || cust.name.startsWith('+') || cust.name.startsWith('Customer ');
+
+          if (audience.contactType === 'unsaved_only') {
+            return isUnsavedFormat;
+          } else if (audience.contactType === 'saved_only') {
+            return !isUnsavedFormat;
+          }
+
+          return true;
+        });
+      }
 
       let sent = 0;
       let failed = 0;
