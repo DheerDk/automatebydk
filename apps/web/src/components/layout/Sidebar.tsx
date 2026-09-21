@@ -62,9 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         {/* Brand Header */}
         <div className="h-16 px-6 flex items-center justify-between border-b border-slate-800">
           <NavLink to="/dashboard" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
-              <Sparkles className="w-5 h-5" />
-            </div>
+            <img src="/logo.png" alt="AutoMate by DK" className="w-8 h-8 object-contain rounded-lg shadow-sm" />
             <div>
               <span className="text-base font-bold text-white tracking-tight">AutoMate</span>
               <span className="text-xs font-semibold text-emerald-400 ml-1">by DK</span>

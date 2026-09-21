@@ -50,9 +50,7 @@ export const LandingPage: React.FC = () => {
       <nav className="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
-              <Sparkles className="w-5 h-5" />
-            </div>
+            <img src="/logo.png" alt="AutoMate by DK" className="w-9 h-9 object-contain rounded-xl shadow-md" />
             <span className="text-xl font-extrabold tracking-tight text-white">AutoMate <span className="text-emerald-400">by DK</span></span>
           </div>
 
@@ -396,10 +394,8 @@ export const LandingPage: React.FC = () => {
       {/* 8. Footer */}
       <footer className="border-t border-slate-900 py-10 bg-slate-950 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
-              <Sparkles className="w-3.5 h-3.5" />
-            </div>
+          <div className="flex items-center gap-2.5">
+            <img src="/logo.png" alt="AutoMate by DK" className="w-6 h-6 object-contain rounded-lg" />
             <span className="font-bold text-white">AutoMate by DK</span>
             <span>— Automate conversations. Capture leads. Grow your business.</span>
           </div>

@@ -43,10 +43,8 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans text-slate-100 selection:bg-emerald-500 selection:text-white">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <Link to="/" className="inline-flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
-            <Sparkles className="w-6 h-6" />
-          </div>
+        <Link to="/" className="inline-flex items-center gap-3">
+          <img src="/logo.png" alt="AutoMate by DK" className="w-11 h-11 object-contain rounded-xl shadow-lg" />
           <span className="text-2xl font-extrabold text-white tracking-tight">AutoMate <span className="text-emerald-400">by DK</span></span>
         </Link>
         <h2 className="mt-4 text-2xl font-bold tracking-tight text-white">Sign in to your dashboard</h2>
