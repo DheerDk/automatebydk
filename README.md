@@ -1,8 +1,8 @@
-# ChatFlow AI — Multi-Tenant WhatsApp AI Automation SaaS Platform
+# AutoMate by DK — Multi-Tenant WhatsApp AI Automation SaaS Platform
 
-> **Turn WhatsApp Conversations Into Customers.**
+> **Automate conversations. Capture leads. Grow your business.**
 
-ChatFlow AI is an enterprise-grade, multi-tenant WhatsApp AI Automation SaaS platform designed for retail, fashion stores, salons, clinics, mobile shops, real estate, and local commerce businesses. It connects WhatsApp Business accounts with an AI-powered conversational catalog, intelligent FAQ resolution, CRM, automated follow-ups, and lead management.
+AutoMate by DK is an enterprise-grade, multi-tenant WhatsApp AI Automation SaaS platform designed for retail, fashion stores, salons, clinics, mobile shops, real estate, and local commerce businesses. It connects WhatsApp Business accounts (via Instant QR Code or Meta Cloud API) with an AI-powered conversational catalog, intelligent FAQ resolution, CRM, automated follow-ups, and lead management.
 
 ---
 

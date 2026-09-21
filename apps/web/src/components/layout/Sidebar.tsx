@@ -66,8 +66,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-base font-bold text-white tracking-tight">ChatFlow</span>
-              <span className="text-xs font-semibold text-emerald-400 ml-1">AI</span>
+              <span className="text-base font-bold text-white tracking-tight">AutoMate</span>
+              <span className="text-xs font-semibold text-emerald-400 ml-1">by DK</span>
             </div>
           </NavLink>
           <button

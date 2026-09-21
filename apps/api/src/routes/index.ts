@@ -35,7 +35,8 @@ const router = Router();
 router.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    service: 'ChatFlow AI API',
+    service: 'AutoMate by DK API',
+    tagline: 'Automate conversations. Capture leads. Grow your business.',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });

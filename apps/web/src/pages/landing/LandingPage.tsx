@@ -23,8 +23,8 @@ export const LandingPage: React.FC = () => {
 
   const faqs = [
     {
-      q: 'How does ChatFlow AI connect to WhatsApp?',
-      a: 'ChatFlow AI connects seamlessly using Meta’s official WhatsApp Cloud API (Graph API v21.0). You can link your WhatsApp Business account in under 3 minutes with zero coding required.',
+      q: 'How does AutoMate by DK connect to WhatsApp?',
+      a: 'AutoMate by DK supports dual connection modes: 1) Instant QR Code Scan (Multi-Device) which links your existing WhatsApp phone app in 5 seconds without changing SIMs, or 2) Official Meta WhatsApp Cloud API (Graph API v21.0) for high-volume enterprise accounts.',
     },
     {
       q: 'How does the AI natural language product search work?',
@@ -32,15 +32,15 @@ export const LandingPage: React.FC = () => {
     },
     {
       q: 'Can human staff take over when needed?',
-      a: 'Yes! Customers can type "agent" or "talk to person", and ChatFlow AI immediately halts automatic replies, switches conversation status to Human Required, and assigns a team member with real-time notifications.',
+      a: 'Yes! Customers can type "agent" or "talk to person", and AutoMate by DK immediately halts automatic replies, switches conversation status to Human Required, and assigns a team member with real-time notifications.',
     },
     {
       q: 'Can multiple team members manage the same WhatsApp number?',
-      a: 'Absolutely. ChatFlow AI provides role-based multi-user access (Owner, Admin, Staff) so your entire team can collaborate on WhatsApp inbox enquiries simultaneously.',
+      a: 'Absolutely. AutoMate by DK provides role-based multi-user access (Owner, Admin, Staff) so your entire team can collaborate on WhatsApp inbox enquiries simultaneously.',
     },
     {
       q: 'Can I test it before connecting my live WhatsApp account?',
-      a: 'Yes! ChatFlow AI includes a built-in interactive WhatsApp Simulator directly in your browser. You can test product searches, AI answers, and lead captures without any external credentials.',
+      a: 'Yes! AutoMate by DK includes a built-in interactive WhatsApp Simulator directly in your browser. You can test product searches, AI answers, and lead captures without any external credentials.',
     },
   ];
 
@@ -53,7 +53,7 @@ export const LandingPage: React.FC = () => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
               <Sparkles className="w-5 h-5" />
             </div>
-            <span className="text-xl font-extrabold tracking-tight text-white">ChatFlow <span className="text-emerald-400">AI</span></span>
+            <span className="text-xl font-extrabold tracking-tight text-white">AutoMate <span className="text-emerald-400">by DK</span></span>
           </div>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
@@ -92,11 +92,11 @@ export const LandingPage: React.FC = () => {
         </div>
 
         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-tight sm:leading-none">
-          Turn WhatsApp Chats <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-500">Into Automated Sales.</span>
+          Automate Conversations. <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-500">Capture Leads.</span> Grow Your Business.
         </h1>
 
         <p className="mt-6 text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
-          Link your WhatsApp in 5 seconds with a QR code or Cloud API. Automate conversations, showcase products, capture qualified leads, and close deals 24/7.
+          Link your WhatsApp in 5 seconds via QR Code or Meta Cloud API. Transform customer chats into sales, showcase live catalog products, and close leads 24/7 on autopilot.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -200,7 +200,7 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Simple 4-Step Process</span>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-white mt-2">How ChatFlow AI Works</h2>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white mt-2">How AutoMate by DK Works</h2>
             <p className="text-slate-400 mt-3 text-sm sm:text-base">Turn incoming WhatsApp chats into revenue on autopilot.</p>
           </div>
 
@@ -380,7 +380,7 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-3xl mx-auto">
           <h2 className="text-3xl sm:text-5xl font-extrabold text-white">Start Converting WhatsApp Chats Today</h2>
           <p className="mt-4 text-slate-300 text-sm sm:text-base">
-            Set up your AI catalog, connect WhatsApp, and close leads on autopilot.
+            Set up your AI catalog, connect WhatsApp in 5 seconds, and close leads on autopilot.
           </p>
           <div className="mt-8 flex justify-center gap-4">
             <Link
@@ -400,10 +400,10 @@ export const LandingPage: React.FC = () => {
             <div className="w-6 h-6 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
               <Sparkles className="w-3.5 h-3.5" />
             </div>
-            <span className="font-bold text-white">ChatFlow AI</span>
-            <span>— Multi-Tenant WhatsApp AI Automation Platform</span>
+            <span className="font-bold text-white">AutoMate by DK</span>
+            <span>— Automate conversations. Capture leads. Grow your business.</span>
           </div>
-          <p>© 2025 ChatFlow AI. All rights reserved.</p>
+          <p>© 2025 AutoMate by DK. All rights reserved.</p>
         </div>
       </footer>
     </div>

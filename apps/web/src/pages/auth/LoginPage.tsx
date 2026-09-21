@@ -47,7 +47,7 @@ export const LoginPage: React.FC = () => {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
             <Sparkles className="w-6 h-6" />
           </div>
-          <span className="text-2xl font-extrabold text-white tracking-tight">ChatFlow <span className="text-emerald-400">AI</span></span>
+          <span className="text-2xl font-extrabold text-white tracking-tight">AutoMate <span className="text-emerald-400">by DK</span></span>
         </Link>
         <h2 className="mt-4 text-2xl font-bold tracking-tight text-white">Sign in to your dashboard</h2>
         <p className="mt-1 text-xs text-slate-400">

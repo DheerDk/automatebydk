@@ -54,7 +54,7 @@ BaileysService.initAllSavedSessions();
 // Start HTTP Server
 if (process.env.NODE_ENV !== 'test') {
   server.listen(config.port, () => {
-    logger.info(`🚀 ChatFlow AI Backend listening on http://localhost:${config.port}`);
+    logger.info(`🚀 AutoMate by DK Backend listening on http://localhost:${config.port}`);
     logger.info(`🌐 Frontend URL: ${config.frontendUrl}`);
     logger.info(`🤖 WhatsApp Mode: ${config.whatsapp.mock ? 'MOCK SIMULATION' : 'LIVE META CLOUD API (v21.0)'}`);
     logger.info(`🧠 AI Mode: ${config.ai.mock ? 'MOCK ENGINE' : 'OPENAI LIVE'}`);
