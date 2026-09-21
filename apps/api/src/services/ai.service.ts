@@ -284,71 +284,305 @@ Return JSON with the following keys (use null if not mentioned):
    * 4. FAQ Resolver Using Business Settings Context
    */
   public static async answerFaq(organizationId: string, question: string): Promise<string> {
+    const result = await this.generateBusinessAiReply({
+      organizationId,
+      customerMessage: question,
+    });
+    return result.replyText;
+  }
+
+  /**
+   * 5. Generate Custom Business Trained AI Reply
+   * Combines tenant's custom prompt, custom FAQs, knowledge base, policies, and catalog
+   */
+  public static async generateBusinessAiReply(params: {
+    organizationId: string;
+    customerMessage: string;
+    customerName?: string;
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  }): Promise<{
+    replyText: string;
+    detectedIntent: CustomerIntent;
+    matchedCustomFaq?: { question: string; answer: string } | null;
+    products?: any[];
+    sourcesUsed: string[];
+  }> {
+    const { organizationId, customerMessage, customerName = 'Valued Customer', conversationHistory = [] } = params;
+    const cleanMsg = (customerMessage || '').trim();
+    const lowerMsg = cleanMsg.toLowerCase();
+
+    // 1. Fetch organization and business settings
     const settings = await prisma.businessSettings.findUnique({
       where: { organizationId },
       include: { organization: true },
     });
 
-    if (!settings) {
-      return "Thank you for reaching out! Our team will assist you shortly with your enquiry.";
+    const storeName = settings?.organization?.name || 'Our Store';
+
+    // Parse custom FAQs
+    let customFaqs: Array<{ id?: string; question: string; answer: string; keywords?: string[] }> = [];
+    if (settings?.aiCustomFaqs) {
+      try {
+        customFaqs = typeof settings.aiCustomFaqs === 'string'
+          ? JSON.parse(settings.aiCustomFaqs)
+          : settings.aiCustomFaqs;
+      } catch {
+        customFaqs = [];
+      }
     }
 
+    // 2. Detect Intent
+    const intent = await this.detectIntent(cleanMsg);
+    const sourcesUsed: string[] = [];
+
+    // Check Human Support Intent
+    if (intent === CustomerIntent.HUMAN_SUPPORT) {
+      return {
+        replyText: `🧑‍💼 We have connected you with the ${storeName} support team! A representative will reply to you here shortly.`,
+        detectedIntent: CustomerIntent.HUMAN_SUPPORT,
+        sourcesUsed: ['HUMAN_SUPPORT_TRIGGER'],
+      };
+    }
+
+    // 3. Match Custom FAQs first (Direct exact/keyword match)
+    let matchedFaq: { question: string; answer: string } | null = null;
+    for (const faq of customFaqs) {
+      const qLower = (faq.question || '').toLowerCase();
+      const kwList = Array.isArray(faq.keywords)
+        ? faq.keywords.map((k) => k.toLowerCase().trim())
+        : (faq.keywords ? String(faq.keywords).split(',').map((k) => k.toLowerCase().trim()) : []);
+
+      if (
+        lowerMsg === qLower ||
+        lowerMsg.includes(qLower) ||
+        qLower.includes(lowerMsg) ||
+        kwList.some((kw) => kw.length > 2 && lowerMsg.includes(kw))
+      ) {
+        matchedFaq = faq;
+        sourcesUsed.push('CUSTOM_BUSINESS_FAQ');
+        break;
+      }
+    }
+
+    // 4. Check if Product Search is relevant
+    let matchedProducts: any[] = [];
+    if (intent === CustomerIntent.PRODUCT_SEARCH || intent === CustomerIntent.OFFERS || lowerMsg.includes('price') || lowerMsg.includes('buy') || lowerMsg.includes('catalog') || lowerMsg.includes('product')) {
+      const filters = await this.extractSearchFilters(cleanMsg);
+      matchedProducts = await this.searchProductsFromDatabase(organizationId, filters, 3);
+      if (matchedProducts.length > 0) {
+        sourcesUsed.push('PRODUCT_CATALOG');
+      }
+    }
+
+    // Tone descriptions
+    const toneGuidelines: Record<string, string> = {
+      FRIENDLY: 'Warm, polite, approachable, and enthusiastic. Use appropriate emojis.',
+      PROFESSIONAL: 'Formal, courteous, respectful, and authoritative. Clear and precise language.',
+      SALES_DRIVEN: 'Persuasive, energetic, highlight deals/benefits, with strong call-to-actions to purchase or book.',
+      HINGLISH: 'Friendly natural conversational blend of Hindi & English (e.g., "Namaste! Aapka welcome hai...", "Ji zaroor...").',
+      CONCISE: 'Direct, brief, bulleted, no fluff, to the point.',
+    };
+    const toneInstruction = toneGuidelines[settings?.aiTone || 'FRIENDLY'] || toneGuidelines.FRIENDLY;
+
+    const fallbackMsg = settings?.aiFallbackMessage || `Thank you for contacting *${storeName}*! For more specific inquiries, reply *"SUPPORT"* to chat with our team.`;
+
+    // 5. If OpenAI client is available, run GPT-4o-mini generation
     const client = this.getClient();
-    if (!client) {
-      const text = question.toLowerCase();
-      if (text.includes('deliver') || text.includes('shipping')) {
-        return `🚚 *Delivery Policy:* ${settings.deliveryPolicy || 'Standard delivery in 2-4 business days.'}`;
-      }
-      if (text.includes('return') || text.includes('refund')) {
-        return `🔄 *Return Policy:* ${settings.returnPolicy || '7-day easy returns and exchanges available.'}`;
-      }
-      if (text.includes('exchange')) {
-        return `🔁 *Exchange Policy:* ${settings.exchangePolicy || 'Free size exchange within 7 days.'}`;
-      }
-      if (text.includes('payment') || text.includes('cod') || text.includes('upi')) {
-        return `💳 *Payment Methods:* ${settings.paymentMethods || 'UPI, Cards, Net Banking & Cash on Delivery (COD).'}`;
-      }
-      if (text.includes('timing') || text.includes('hour') || text.includes('open')) {
-        return `⏰ *Store Timings:* ${settings.businessHours || 'Mon-Sat: 10:00 AM - 08:00 PM'}`;
-      }
-      if (text.includes('address') || text.includes('location') || text.includes('where') || text.includes('map') || text === '5') {
-        return `📍 *Store Location & Hours:*\n🏢 ${settings.organization.name}\n📍 ${settings.address || 'Visit our flagship store!'}\n⏰ *Timings:* ${settings.businessHours || 'Mon-Sat: 10:00 AM - 08:00 PM'}\n📞 *Phone:* ${settings.phone || 'Available on WhatsApp'}`;
-      }
-      if (text.includes('order') || text.includes('buy') || text.includes('cart') || text === '6') {
-        return `🛒 *Ready to Order?*\n1. Browse our catalog and reply with the product name\n2. We support UPI, Cards, and Cash on Delivery\n🌐 *Website:* ${settings.website || 'Available on request'}`;
-      }
+    if (client) {
+      try {
+        const faqContext = customFaqs.length > 0
+          ? customFaqs.map((f, i) => `Q${i + 1}: ${f.question}\nA${i + 1}: ${f.answer}`).join('\n\n')
+          : 'None';
 
-      return `👋 Thank you for contacting *${settings.organization.name}*!\n\n${settings.welcomeMessage || 'How can we assist you today?'}`;
+        const productContext = matchedProducts.length > 0
+          ? matchedProducts.map((p) => `- ${p.name}: ₹${p.discountPrice || p.price} (Color: ${p.color || 'N/A'}, Size: ${p.size || 'Free'}, Stock: ${p.stockStatus})`).join('\n')
+          : 'No specific products queried.';
+
+        const systemPrompt = `You are the official AI WhatsApp Assistant for the business "${storeName}".
+Tone & Persona: ${toneInstruction}
+
+${settings?.aiSystemPrompt ? `BUSINESS CUSTOM INSTRUCTIONS:\n${settings.aiSystemPrompt}\n` : ''}
+${settings?.aiKnowledgeBase ? `BUSINESS KNOWLEDGE BASE:\n${settings.aiKnowledgeBase}\n` : ''}
+
+STORE INFORMATION & POLICIES:
+- Business Name: ${storeName}
+- Operating Hours: ${settings?.businessHours || 'Mon-Sat: 10:00 AM - 08:00 PM'}
+- Address/Location: ${settings?.address || 'Main Branch'}
+- Delivery Policy: ${settings?.deliveryPolicy || 'Standard delivery in 2-4 business days.'}
+- Return Policy: ${settings?.returnPolicy || '7-day easy returns and exchanges available.'}
+- Exchange Policy: ${settings?.exchangePolicy || 'Free size exchange within 7 days.'}
+- Payment Methods: ${settings?.paymentMethods || 'UPI, Cards, Cash on Delivery (COD)'}
+- Contact Phone: ${settings?.phone || 'Available on WhatsApp'}
+- Website: ${settings?.website || 'Available on request'}
+
+CUSTOM TRAINED BUSINESS FAQs:
+${faqContext}
+
+MATCHING CATALOG PRODUCTS:
+${productContext}
+
+CUSTOMER NAME: ${customerName}
+
+CORE RULES:
+1. Always stay in character as the official assistant for "${storeName}".
+2. Base all factual answers STRICTLY on the knowledge base, FAQs, policies, and products above.
+3. If the user asks something completely unknown or outside the business knowledge, reply politely with: "${fallbackMsg}".
+4. Use neat WhatsApp formatting (e.g. *bold*, bullet points, line breaks) so the message looks great on mobile screens.
+5. If the customer wants human help or speaks of complex complaints, invite them to reply "SUPPORT".`;
+
+        const messages: any[] = [
+          { role: 'system', content: systemPrompt },
+        ];
+
+        // Append recent conversation history
+        if (conversationHistory && conversationHistory.length > 0) {
+          const recent = conversationHistory.slice(-4);
+          for (const h of recent) {
+            messages.push({
+              role: h.role === 'assistant' ? 'assistant' : 'user',
+              content: h.content,
+            });
+          }
+        }
+
+        messages.push({ role: 'user', content: cleanMsg });
+
+        const response = await client.chat.completions.create({
+          model: config.ai.model || 'gpt-4o-mini',
+          messages,
+          temperature: 0.3,
+          max_tokens: 350,
+        });
+
+        const reply = response.choices[0]?.message?.content?.trim();
+        if (reply) {
+          sourcesUsed.push('OPENAI_TRAINED_AGENT');
+          return {
+            replyText: reply,
+            detectedIntent: intent,
+            matchedCustomFaq: matchedFaq,
+            products: matchedProducts,
+            sourcesUsed,
+          };
+        }
+      } catch (err) {
+        logger.error('Error generating business AI reply with OpenAI:', err);
+      }
     }
 
-    try {
-      const response = await client.chat.completions.create({
-        model: config.ai.model,
-        messages: [
-          {
-            role: 'system',
-            content: `You are the friendly WhatsApp AI assistant for the business "${settings.organization.name}".
-Answer the customer's question strictly using the provided store information. NEVER invent policies, prices or store details.
+    // 6. Intelligent Local Knowledge Engine (Mock / Fallback)
+    sourcesUsed.push('LOCAL_BUSINESS_ENGINE');
 
-Store Context:
-- Store Name: ${settings.organization.name}
-- Store Timings: ${settings.businessHours}
-- Address: ${settings.address}
-- Delivery Policy: ${settings.deliveryPolicy}
-- Return Policy: ${settings.returnPolicy}
-- Exchange Policy: ${settings.exchangePolicy}
-- Payment Methods: ${settings.paymentMethods}
-- Contact Phone: ${settings.phone}`,
-          },
-          { role: 'user', content: question },
-        ],
-        temperature: 0.2,
+    // Case A: Matched a custom business FAQ
+    if (matchedFaq) {
+      let ans = matchedFaq.answer.replace(/\{\{name\}\}/gi, customerName).replace(/\{\{store\}\}/gi, storeName);
+      if (settings?.aiTone === 'HINGLISH') {
+        ans = `Namaste ${customerName}! 🙏 ${ans}`;
+      }
+      return {
+        replyText: ans,
+        detectedIntent: CustomerIntent.FAQ,
+        matchedCustomFaq: matchedFaq,
+        sourcesUsed,
+      };
+    }
+
+    // Case B: Greeting
+    if (intent === CustomerIntent.GREETING || ['hi', 'hello', 'hey', 'start', 'namaste'].includes(lowerMsg)) {
+      if (settings?.welcomeMessage) {
+        return {
+          replyText: settings.welcomeMessage.replace(/\{\{name\}\}/gi, customerName),
+          detectedIntent: CustomerIntent.GREETING,
+          sourcesUsed: ['BUSINESS_WELCOME_SETTINGS'],
+        };
+      }
+      return {
+        replyText: `👋 Hello ${customerName}! Welcome to *${storeName}*.\n\nHow can we help you today? You can ask about our products, store timings, delivery, or reply *"MENU"* to browse.`,
+        detectedIntent: CustomerIntent.GREETING,
+        sourcesUsed: ['DEFAULT_GREETING'],
+      };
+    }
+
+    // Case C: Standard Store FAQs
+    if (lowerMsg.includes('deliver') || lowerMsg.includes('shipping') || lowerMsg.includes('courier')) {
+      return {
+        replyText: `🚚 *Delivery Policy for ${storeName}:*\n${settings?.deliveryPolicy || 'Standard delivery in 2-4 business days.'}`,
+        detectedIntent: CustomerIntent.FAQ,
+        sourcesUsed: ['STORE_POLICY_DELIVERY'],
+      };
+    }
+    if (lowerMsg.includes('return') || lowerMsg.includes('refund')) {
+      return {
+        replyText: `🔄 *Return Policy for ${storeName}:*\n${settings?.returnPolicy || '7-day easy returns and exchanges available.'}`,
+        detectedIntent: CustomerIntent.FAQ,
+        sourcesUsed: ['STORE_POLICY_RETURN'],
+      };
+    }
+    if (lowerMsg.includes('exchange')) {
+      return {
+        replyText: `🔁 *Exchange Policy:*\n${settings?.exchangePolicy || 'Free size exchange within 7 days.'}`,
+        detectedIntent: CustomerIntent.FAQ,
+        sourcesUsed: ['STORE_POLICY_EXCHANGE'],
+      };
+    }
+    if (lowerMsg.includes('payment') || lowerMsg.includes('cod') || lowerMsg.includes('upi') || lowerMsg.includes('gpay')) {
+      return {
+        replyText: `💳 *Accepted Payment Methods at ${storeName}:*\n${settings?.paymentMethods || 'UPI, Cards, Net Banking & Cash on Delivery (COD).'}\n\nAll transactions are 100% secure.`,
+        detectedIntent: CustomerIntent.FAQ,
+        sourcesUsed: ['STORE_POLICY_PAYMENT'],
+      };
+    }
+    if (lowerMsg.includes('timing') || lowerMsg.includes('hour') || lowerMsg.includes('open') || lowerMsg.includes('close') || lowerMsg.includes('sunday')) {
+      return {
+        replyText: `⏰ *Store Timings for ${storeName}:*\n${settings?.businessHours || 'Mon-Sat: 10:00 AM - 08:00 PM'}`,
+        detectedIntent: CustomerIntent.STORE_INFO,
+        sourcesUsed: ['STORE_INFO_HOURS'],
+      };
+    }
+    if (lowerMsg.includes('address') || lowerMsg.includes('location') || lowerMsg.includes('where') || lowerMsg.includes('map') || lowerMsg.includes('branch')) {
+      return {
+        replyText: `📍 *Store Location:*\n🏢 *${storeName}*\n📍 ${settings?.address || 'Main flagship store'}\n⏰ *Timings:* ${settings?.businessHours || 'Mon-Sat: 10:00 AM - 08:00 PM'}\n📞 *Contact:* ${settings?.phone || 'Available on WhatsApp'}`,
+        detectedIntent: CustomerIntent.STORE_INFO,
+        sourcesUsed: ['STORE_INFO_ADDRESS'],
+      };
+    }
+
+    // Case D: Knowledge Base matching
+    if (settings?.aiKnowledgeBase && settings.aiKnowledgeBase.trim().length > 0) {
+      const words = lowerMsg.split(/\s+/).filter((w) => w.length > 3);
+      const kbLines = settings.aiKnowledgeBase.split('\n').filter((l) => l.trim().length > 0);
+      const matchedLine = kbLines.find((line) => words.some((w) => line.toLowerCase().includes(w)));
+      if (matchedLine) {
+        return {
+          replyText: `ℹ️ *Information from ${storeName}:*\n${matchedLine.trim()}`,
+          detectedIntent: CustomerIntent.FAQ,
+          sourcesUsed: ['KNOWLEDGE_BASE_TEXT'],
+        };
+      }
+    }
+
+    // Case E: Products Found
+    if (matchedProducts.length > 0) {
+      let productReply = `🛍️ *Matching Products at ${storeName}:*\n\n`;
+      matchedProducts.forEach((p, idx) => {
+        const price = p.discountPrice ? `₹${p.discountPrice} (was ₹${p.price})` : `₹${p.price}`;
+        productReply += `${idx + 1}. *${p.name}* - ${price}\n${p.description || ''}\n\n`;
       });
+      productReply += `👉 Reply with the product name to order now!`;
 
-      return response.choices[0]?.message?.content || 'Our team will assist you shortly.';
-    } catch (err) {
-      logger.error('OpenAI FAQ Error:', err);
-      return `Thank you for contacting *${settings.organization.name}*! Our support team will answer your query shortly.`;
+      return {
+        replyText: productReply,
+        detectedIntent: CustomerIntent.PRODUCT_SEARCH,
+        products: matchedProducts,
+        sourcesUsed,
+      };
     }
+
+    // Case F: Fallback
+    return {
+      replyText: fallbackMsg,
+      detectedIntent: CustomerIntent.UNKNOWN,
+      sourcesUsed: ['AI_FALLBACK'],
+    };
   }
 }

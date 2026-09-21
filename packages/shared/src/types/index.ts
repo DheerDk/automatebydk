@@ -126,3 +126,20 @@ export enum CustomerIntent {
   COMPLAINT = 'COMPLAINT',
   UNKNOWN = 'UNKNOWN',
 }
+
+export enum AiTone {
+  FRIENDLY = 'FRIENDLY',
+  PROFESSIONAL = 'PROFESSIONAL',
+  SALES_DRIVEN = 'SALES_DRIVEN',
+  HINGLISH = 'HINGLISH',
+  CONCISE = 'CONCISE',
+}
+
+export interface CustomFaqItem {
+  id: string;
+  question: string;
+  answer: string;
+  keywords?: string[];
+  category?: string;
+}
+

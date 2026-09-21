@@ -126,4 +126,80 @@ describe('ChatFlow AI Core Backend Test Suite', () => {
 
     await prisma.lead.delete({ where: { id: lead.id } });
   });
+
+  it('7. Custom Business AI Training & FAQ Reply Generation', async () => {
+    // 1. Update business settings with custom AI training and custom FAQ
+    const customFaqs = [
+      {
+        id: 'faq_test_1',
+        question: 'Do you deliver to Bangalore?',
+        answer: 'Yes! We deliver across all areas of Bangalore within 24 hours with express courier.',
+        keywords: ['bangalore', 'bengaluru', 'karnataka delivery'],
+      },
+    ];
+
+    await prisma.businessSettings.upsert({
+      where: { organizationId: testOrgId },
+      update: {
+        aiSystemPrompt: 'You are Maya for StyleHub. Always be polite and offer store assistance.',
+        aiTone: 'FRIENDLY',
+        aiCustomFaqs: JSON.stringify(customFaqs),
+        aiKnowledgeBase: 'Warranty: All leather shoes have a 1-year replacement warranty.',
+      },
+      create: {
+        organizationId: testOrgId,
+        aiSystemPrompt: 'You are Maya for StyleHub. Always be polite and offer store assistance.',
+        aiTone: 'FRIENDLY',
+        aiCustomFaqs: JSON.stringify(customFaqs),
+        aiKnowledgeBase: 'Warranty: All leather shoes have a 1-year replacement warranty.',
+      },
+    });
+
+    // 2. Test exact custom FAQ resolution
+    const faqReply = await AiService.generateBusinessAiReply({
+      organizationId: testOrgId,
+      customerMessage: 'Do you deliver to Bangalore?',
+      customerName: 'Rahul',
+    });
+
+    expect(faqReply.replyText).toContain('Bangalore within 24 hours');
+    expect(faqReply.sourcesUsed).toContain('CUSTOM_BUSINESS_FAQ');
+
+    // 3. Test knowledge base recall
+    const kbReply = await AiService.generateBusinessAiReply({
+      organizationId: testOrgId,
+      customerMessage: 'What is the warranty on leather shoes?',
+      customerName: 'Rahul',
+    });
+
+    expect(kbReply.replyText.toLowerCase()).toContain('warranty');
+    expect(kbReply.sourcesUsed.some(s => s.includes('KNOWLEDGE') || s.includes('FAQ') || s.includes('LOCAL'))).toBe(true);
+
+    // 4. Test Human handoff trigger
+    const humanReply = await AiService.generateBusinessAiReply({
+      organizationId: testOrgId,
+      customerMessage: 'I want to talk to a human agent please',
+      customerName: 'Rahul',
+    });
+
+    expect(humanReply.detectedIntent).toBe('HUMAN_SUPPORT');
+  });
+
+  it('8. Full End-to-End Inbound WhatsApp Message with Custom AI Training', async () => {
+    const { WebhookController } = await import('../src/controllers/webhook.controller.js');
+
+    const result = await WebhookController.processInboundMessage({
+      organizationId: testOrgId,
+      phone: '+919988776655',
+      name: 'Priya Sharma',
+      text: 'Do you deliver to Bangalore?',
+      whatsappMessageId: `msg_test_${Date.now()}`,
+    });
+
+    expect(result.conversation).toBeDefined();
+    expect(result.customer).toBeDefined();
+    expect(result.outgoingResponse).toBeDefined();
+    expect(result.sourcesUsed).toContain('CUSTOM_BUSINESS_FAQ');
+  }, 15000);
 });
+

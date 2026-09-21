@@ -111,7 +111,10 @@ tenantRouter.get('/organization/members', OrganizationController.getMembers);
 tenantRouter.post('/organization/members', OrganizationController.inviteMember);
 tenantRouter.delete('/organization/members/:memberId', OrganizationController.removeMember);
 
-// AI Sandbox & Test Search
+// AI Sandbox & Test Search & Custom Business Agent Training
+tenantRouter.get('/ai/training', AiController.getTraining);
+tenantRouter.put('/ai/training', AiController.updateTraining);
+tenantRouter.post('/ai/test-agent', AiController.testAgent);
 tenantRouter.post('/ai/test-search', AiController.testSearch);
 tenantRouter.post('/ai/test-faq', AiController.testFaq);
 

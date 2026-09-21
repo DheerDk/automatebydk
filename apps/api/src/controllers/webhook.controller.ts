@@ -323,9 +323,31 @@ export class WebhookController {
       return { conversation, customer, inboundMessage: savedInbound, handledBy: 'AI_DISABLED' };
     }
 
-    // 5. Detect Intent
-    const intent = await AiService.detectIntent(text);
-    logger.info(`Detected Intent for "${text}": ${intent}`);
+    // Fetch recent conversation history for multi-turn AI context
+    const recentMessages = await prisma.message.findMany({
+      where: {
+        conversationId: conversation.id,
+        id: { not: savedInbound.id },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 4,
+    });
+
+    const conversationHistory = recentMessages.reverse().map((m) => ({
+      role: (m.direction === MessageDirection.INBOUND ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    // 5. Generate Custom Business Trained AI Response
+    const aiResult = await AiService.generateBusinessAiReply({
+      organizationId,
+      customerMessage: text,
+      customerName: customer.name,
+      conversationHistory,
+    });
+
+    const intent = aiResult.detectedIntent;
+    logger.info(`Trained AI generated reply for "${text}" (Intent: ${intent}, Sources: ${aiResult.sourcesUsed.join(', ')})`);
 
     let outgoingResponse: any = null;
 
@@ -344,11 +366,10 @@ export class WebhookController {
         link: `/dashboard/inbox?conv=${conversation.id}`,
       });
 
-      const replyText = `🧑‍💼 We have connected you with our store team! A customer representative will reply to you here shortly.`;
       outgoingResponse = await WhatsAppService.sendMessage({
         organizationId,
         to: customer.phone,
-        content: replyText,
+        content: aiResult.replyText,
         conversationId: conversation.id,
         customerId: customer.id,
       });
@@ -361,8 +382,8 @@ export class WebhookController {
       return { conversation, customer, inboundMessage: savedInbound, intent, outgoingResponse };
     }
 
-    // Intent Handler: GREETING
-    if (intent === CustomerIntent.GREETING) {
+    // Intent Handler: GREETING Shortcut
+    if (intent === CustomerIntent.GREETING && (text.trim() === '0' || text.trim().toLowerCase() === 'menu')) {
       const welcomeMsg = settings?.welcomeMessage || `👋 Welcome to our store! Tap an option or reply with a number:\n1️⃣ 🛍️ Browse Trending Products\n2️⃣ 🔍 Search a Product\n3️⃣ 🏷️ Offers & Deals\n4️⃣ 🧑‍💼 Talk to Support\n5️⃣ 📍 Store Location & Hours\n6️⃣ 🛒 Order Online Now`;
       outgoingResponse = await WhatsAppService.sendMessage({
         organizationId,
@@ -375,53 +396,7 @@ export class WebhookController {
       return { conversation, customer, inboundMessage: savedInbound, intent, outgoingResponse };
     }
 
-    // Intent Handler: OFFERS
-    if (intent === CustomerIntent.OFFERS) {
-      const discountedProducts = await prisma.product.findMany({
-        where: {
-          organizationId,
-          isActive: true,
-          discountPrice: { not: null },
-        },
-        take: 3,
-        orderBy: { discountPrice: 'asc' },
-      });
-
-      let offerText = `🎉 *Special Offers & Deals Today!*\n\n`;
-      if (discountedProducts.length > 0) {
-        for (const p of discountedProducts) {
-          offerText += `✨ *${p.name}*\n💰 ₹${p.discountPrice} (Orig: ₹${p.price})\n\n`;
-        }
-        offerText += `Reply with the product name to order!`;
-      } else {
-        offerText += `Enjoy free express shipping on all orders over ₹999! Browse our catalog anytime.`;
-      }
-
-      outgoingResponse = await WhatsAppService.sendMessage({
-        organizationId,
-        to: customer.phone,
-        content: offerText,
-        conversationId: conversation.id,
-        customerId: customer.id,
-      });
-
-      return { conversation, customer, inboundMessage: savedInbound, intent, outgoingResponse };
-    }
-
-    // Intent Handler: FAQ & STORE_INFO
-    if (intent === CustomerIntent.FAQ || intent === CustomerIntent.STORE_INFO) {
-      const faqAnswer = await AiService.answerFaq(organizationId, text);
-      outgoingResponse = await WhatsAppService.sendMessage({
-        organizationId,
-        to: customer.phone,
-        content: faqAnswer,
-        conversationId: conversation.id,
-        customerId: customer.id,
-      });
-
-      return { conversation, customer, inboundMessage: savedInbound, intent, outgoingResponse };
-    }
-
+    // Intent Handler: Search Guide Shortcut
     if (text.trim() === '2') {
       const searchGuideText = `🔍 *Search Our Catalog:*\n\nSimply type what you are looking for!\nFor example:\n• *Black shirts under 1500*\n• *Red kurti in size M*\n• *Sneakers under 2000*\n• *Cotton jeans*`;
       outgoingResponse = await WhatsAppService.sendMessage({
@@ -435,24 +410,9 @@ export class WebhookController {
       return { conversation, customer, inboundMessage: savedInbound, intent, outgoingResponse };
     }
 
-    // Intent Handler: PRODUCT_SEARCH & Default
-    const filters = await AiService.extractSearchFilters(text);
-    const products = await AiService.searchProductsFromDatabase(organizationId, filters, 3);
-
-    // Save AI Search Query record
-    await prisma.aiSearch.create({
-      data: {
-        organizationId,
-        customerId: customer.id,
-        query: text,
-        extractedFilters: JSON.stringify(filters),
-        resultsCount: products.length,
-      },
-    });
-
-    if (products.length > 0) {
-      // Send the top matching product card
-      const topProduct = products[0];
+    // Check if products were found and user is specifically searching products
+    if (aiResult.products && aiResult.products.length > 0 && (intent === CustomerIntent.PRODUCT_SEARCH || intent === CustomerIntent.PRODUCT_DETAILS)) {
+      const topProduct = aiResult.products[0];
       const images = JSON.parse(topProduct.images || '[]');
 
       outgoingResponse = await WhatsAppService.sendProductMessage(
@@ -510,17 +470,26 @@ export class WebhookController {
         where: { id: topProduct.id },
         data: { enquiryCount: { increment: 1 } },
       });
-    } else {
-      const fallbackText = `I couldn't find an exact match for "${text}".\n\nWould you like to browse our full collection or speak with our sales team? Reply *"MENU"* or *"SUPPORT"*.`;
-      outgoingResponse = await WhatsAppService.sendMessage({
-        organizationId,
-        to: customer.phone,
-        content: fallbackText,
-        conversationId: conversation.id,
-        customerId: customer.id,
-      });
+
+      return { conversation, customer, inboundMessage: savedInbound, intent, productsFound: aiResult.products.length, outgoingResponse };
     }
 
-    return { conversation, customer, inboundMessage: savedInbound, intent, productsFound: products.length, outgoingResponse };
+    // Default & Custom Business Reply (FAQs, knowledge base, policies, custom prompt)
+    outgoingResponse = await WhatsAppService.sendMessage({
+      organizationId,
+      to: customer.phone,
+      content: aiResult.replyText,
+      conversationId: conversation.id,
+      customerId: customer.id,
+    });
+
+    return {
+      conversation,
+      customer,
+      inboundMessage: savedInbound,
+      intent,
+      sourcesUsed: aiResult.sourcesUsed,
+      outgoingResponse,
+    };
   }
 }

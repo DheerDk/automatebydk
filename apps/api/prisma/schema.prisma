@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -84,6 +84,12 @@ model BusinessSettings {
   paymentMethods        String?      @default("UPI, Credit/Debit Cards, Cash on Delivery (COD), Net Banking")
   welcomeMessage        String?      @default("👋 Welcome to our store! Reply with a number:\n1️⃣ Browse Products\n2️⃣ Search Product\n3️⃣ Offers & Deals\n4️⃣ Talk to Support")
   aiAutoReplyEnabled    Boolean      @default(true)
+  aiSystemPrompt        String?      // Custom AI Business Prompt / Instructions
+  aiKnowledgeBase       String?      // Freeform business knowledge base notes
+  aiCustomFaqs          String       @default("[]") // JSON string of custom FAQ Q&A pairs
+  aiTone                String       @default("FRIENDLY") // FRIENDLY, PROFESSIONAL, SALES_DRIVEN, HINGLISH, CONCISE
+  aiFallbackMessage     String?      @default("I am sorry, I am not sure about that. Let me connect you with our store team!")
+  aiIncludeCatalog      Boolean      @default(true)
   onlyUnsavedContacts   Boolean      @default(false)
   excludedNumbers       String       @default("")
   humanHandoffKeywords  String       @default("human,agent,support,help,person,representative")
