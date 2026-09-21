@@ -85,6 +85,8 @@ model BusinessSettings {
   paymentMethods        String?      @default("UPI, Credit/Debit Cards, Cash on Delivery (COD), Net Banking")
   welcomeMessage        String?      @default("👋 Welcome to our store! Reply with a number:\n1️⃣ Browse Products\n2️⃣ Search Product\n3️⃣ Offers & Deals\n4️⃣ Talk to Support")
   aiAutoReplyEnabled    Boolean      @default(true)
+  onlyUnsavedContacts   Boolean      @default(false)
+  excludedNumbers       String       @default("")
   humanHandoffKeywords  String       @default("human,agent,support,help,person,representative")
   address               String?
   phone                 String?
@@ -265,6 +267,7 @@ model AutomationRule {
   trigger         String
   conditions      String            @default("{}") // JSON string
   actions         String            @default("[]") // JSON string
+  flowData        String?           // JSON string storing visual node graph
   isActive        Boolean           @default(true)
   executionCount  Int               @default(0)
   createdAt       DateTime          @default(now())

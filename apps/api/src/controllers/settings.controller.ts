@@ -65,7 +65,7 @@ export class SettingsController {
   public static async updateBusinessProfile(req: Request, res: Response, next: NextFunction) {
     try {
       const organizationId = req.organizationId!;
-      const { name, phone, email, address, website, instagram, currency, businessHours, deliveryPolicy, returnPolicy, exchangePolicy, paymentMethods, welcomeMessage, aiAutoReplyEnabled, humanHandoffKeywords } = req.body;
+      const { name, phone, email, address, website, instagram, currency, businessHours, deliveryPolicy, returnPolicy, exchangePolicy, paymentMethods, welcomeMessage, aiAutoReplyEnabled, onlyUnsavedContacts, excludedNumbers, humanHandoffKeywords } = req.body;
 
       if (name) {
         await prisma.organization.update({
@@ -78,7 +78,7 @@ export class SettingsController {
         ? humanHandoffKeywords.join(',')
         : humanHandoffKeywords;
 
-      const updatedSettings = await prisma.businessSettings.upsert({
+      const updatedSettings = await (prisma.businessSettings as any).upsert({
         where: { organizationId },
         update: {
           phone,
@@ -94,6 +94,8 @@ export class SettingsController {
           paymentMethods,
           welcomeMessage,
           aiAutoReplyEnabled: aiAutoReplyEnabled !== undefined ? aiAutoReplyEnabled : true,
+          onlyUnsavedContacts: onlyUnsavedContacts !== undefined ? onlyUnsavedContacts : false,
+          excludedNumbers: excludedNumbers !== undefined ? (typeof excludedNumbers === 'string' ? excludedNumbers : (Array.isArray(excludedNumbers) ? excludedNumbers.join(',') : '')) : undefined,
           humanHandoffKeywords: keywordsStr || undefined,
         },
         create: {
@@ -111,6 +113,8 @@ export class SettingsController {
           paymentMethods,
           welcomeMessage,
           aiAutoReplyEnabled: aiAutoReplyEnabled !== undefined ? aiAutoReplyEnabled : true,
+          onlyUnsavedContacts: onlyUnsavedContacts !== undefined ? onlyUnsavedContacts : false,
+          excludedNumbers: excludedNumbers ? (typeof excludedNumbers === 'string' ? excludedNumbers : excludedNumbers.join(',')) : '',
           humanHandoffKeywords: keywordsStr || 'human,agent,support,help',
         },
       });

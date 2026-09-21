@@ -60,6 +60,8 @@ export const SettingsPage: React.FC = () => {
     paymentMethods: '',
     welcomeMessage: '',
     humanHandoffKeywords: 'human, agent, support, help',
+    onlyUnsavedContacts: false,
+    excludedNumbers: '',
   });
 
   const [waForm, setWaForm] = useState({
@@ -96,6 +98,8 @@ export const SettingsPage: React.FC = () => {
         paymentMethods: settings.paymentMethods || '',
         welcomeMessage: settings.welcomeMessage || '',
         humanHandoffKeywords: (settings.humanHandoffKeywords || []).join(', '),
+        onlyUnsavedContacts: Boolean(settings.onlyUnsavedContacts),
+        excludedNumbers: settings.excludedNumbers || '',
       });
     }
 
@@ -766,6 +770,40 @@ export const SettingsPage: React.FC = () => {
               onChange={(e) => setProfileForm({ ...profileForm, humanHandoffKeywords: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-emerald-500"
             />
+          </div>
+
+          {/* Privacy & Personal Contacts Filter */}
+          <div className="p-4 bg-slate-900 text-white rounded-xl space-y-3 mt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  Only Automate Unsaved Customer Numbers
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  When enabled, saved family & friend contacts in your personal phone book will never get bot replies.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={profileForm.onlyUnsavedContacts}
+                onChange={(e) => setProfileForm({ ...profileForm, onlyUnsavedContacts: e.target.checked })}
+                className="w-4 h-4 text-emerald-500 rounded focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                Blacklist / Excluded Phone Numbers (comma-separated):
+              </label>
+              <input
+                type="text"
+                value={profileForm.excludedNumbers}
+                onChange={(e) => setProfileForm({ ...profileForm, excludedNumbers: e.target.value })}
+                placeholder="e.g. +919876543210, +919811122233"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-emerald-400 font-mono focus:outline-none focus:border-emerald-500"
+              />
+            </div>
           </div>
 
           <button

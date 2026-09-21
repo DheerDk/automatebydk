@@ -253,6 +253,46 @@ export class WebhookController {
       message: savedInbound,
     });
 
+    // Privacy & Personal Contact Filter
+    const cleanSender = normalizedPhone.replace(/\D/g, '');
+    let isExcluded = false;
+
+    if (settings) {
+      // 1. Check blacklist of excluded numbers (family / personal friends)
+      if (settings.excludedNumbers && typeof settings.excludedNumbers === 'string') {
+        const blacklist = settings.excludedNumbers
+          .split(',')
+          .map((n: string) => n.replace(/\D/g, ''))
+          .filter(Boolean);
+
+        for (const ex of blacklist) {
+          if (cleanSender.endsWith(ex) || ex.endsWith(cleanSender)) {
+            isExcluded = true;
+            logger.info(`[Privacy Filter] Ignored automated replies for excluded personal number: ${normalizedPhone}`);
+            break;
+          }
+        }
+      }
+
+      // 2. Check "Only Unsaved Contacts" filter
+      if (!isExcluded && settings.onlyUnsavedContacts) {
+        // If the contact on device has a real named title (not a generic fallback like Customer +...)
+        const isNamedContact = name && !name.startsWith('Customer +') && !name.startsWith('+') && !name.startsWith('Customer ');
+        if (isNamedContact) {
+          isExcluded = true;
+          logger.info(`[Privacy Filter] Ignored automated replies for saved device contact: ${name} (${normalizedPhone})`);
+        }
+      }
+    }
+
+    // If contact is excluded from automation, exit early without sending bot replies
+    if (isExcluded) {
+      return {
+        handledBy: 'PERSONAL_FILTER_EXCLUDED',
+        reply: null,
+      };
+    }
+
     // 4. Trigger automations for KEYWORD_MATCH / MESSAGE_RECEIVED
     const autoResult = await AutomationService.processRules({
       organizationId,

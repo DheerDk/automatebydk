@@ -28,135 +28,178 @@ import {
   Play,
   Flame,
   Check,
+  GitBranch,
+  Shield,
+  UserX,
+  Sliders,
+  X,
+  Split,
+  Settings2,
+  RotateCcw,
+  Sparkle,
+  PhoneCall,
+  Info,
+  Edit3
 } from 'lucide-react';
 
-interface RecipeTemplate {
+interface FlowBranch {
   id: string;
-  name: string;
-  category: string;
-  icon: any;
-  color: string;
-  description: string;
-  trigger: string;
-  keyword: string;
-  replyText: string;
-  tags: string[];
-  leadStatus?: string;
+  conditionType: 'EQUALS' | 'CONTAINS' | 'NUMBER_CHOICE';
+  value: string; // e.g. "1", "price", "order"
+  title: string;
+  actions: {
+    type: 'SEND_MESSAGE' | 'SEND_CATALOG' | 'CREATE_LEAD' | 'ADD_TAGS' | 'HUMAN_HANDOFF';
+    text?: string;
+    leadStatus?: string;
+    tags?: string[];
+  }[];
+}
+
+interface VisualFlowData {
+  triggerKeyword: string;
+  triggerType: string;
+  branches: FlowBranch[];
+  defaultAction: {
+    type: 'SEND_MESSAGE' | 'AI_FALLBACK' | 'HUMAN_HANDOFF';
+    text?: string;
+  };
 }
 
 export const AutomationsPage: React.FC = () => {
   const { currentOrganization } = useAuth();
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'workflows' | 'builder' | 'recipes'>('workflows');
+  const [activeTab, setActiveTab] = useState<'workflows' | 'flow_builder' | 'recipes' | 'privacy'>('flow_builder');
 
-  // Builder State
-  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [trigger, setTrigger] = useState('KEYWORD_MATCH');
-  const [keywordInput, setKeywordInput] = useState('');
-  const [keywords, setKeywords] = useState<string[]>(['5', 'location', 'address', 'map']);
-  const [replyText, setReplyText] = useState(
-    '📍 *Our Store Location & Hours:*\n🏢 StyleHub Store, 102 MG Road, Bangalore\n🗺️ Map: https://maps.google.com/?q=StyleHub\n⏰ Open: Mon–Sat (10:00 AM – 9:00 PM)'
-  );
-  const [actionTag, setActionTag] = useState('Location-Lead');
-  const [createLead, setCreateLead] = useState(true);
-  const [leadStatus, setLeadStatus] = useState('INTERESTED');
-  const [isSaving, setIsSaving] = useState(false);
+  // Privacy & Excluded Contacts State
+  const [onlyUnsavedContacts, setOnlyUnsavedContacts] = useState(false);
+  const [excludedNumbers, setExcludedNumbers] = useState<string[]>([]);
+  const [newExcludedInput, setNewExcludedInput] = useState('');
+  const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
+  const [privacySuccess, setPrivacySuccess] = useState(false);
 
-  // Pre-built One-Click Recipes
-  const recipes: RecipeTemplate[] = [
+  // Visual Flow Builder State
+  const [flowName, setFlowName] = useState('Smart Store Welcome & Branching Menu');
+  const [triggerKeyword, setTriggerKeyword] = useState('hi, hello, menu, start, 1, 2, 3, 4, 5');
+  const [branches, setBranches] = useState<FlowBranch[]>([
     {
-      id: 'rec_location',
-      name: 'Option 5: Store Location & Timings Bot',
-      category: 'Store Info',
-      icon: MapPin,
-      color: 'from-amber-500 to-orange-500',
-      description: 'Replies with store address, Google Maps GPS link, and operating hours whenever customer sends 5 or asks for location.',
-      trigger: 'KEYWORD_MATCH',
-      keyword: '5, location, address, map, store, where',
-      replyText:
-        '📍 *Our Store Location & Timings:*\n🏢 102 Fashion Boulevard, Commercial Street, Bangalore\n🗺️ Google Maps: https://maps.google.com/?q=StyleHub\n⏰ Hours: Mon-Sat (10:00 AM - 09:00 PM)\n📞 Contact: +91 98765 43210',
-      tags: ['Store-Visit-Enquiry'],
-      leadStatus: 'INTERESTED',
+      id: 'b1',
+      conditionType: 'NUMBER_CHOICE',
+      value: '1',
+      title: 'Option 1: Browse Products',
+      actions: [
+        {
+          type: 'SEND_CATALOG',
+          text: '🛍️ Here are our top trending products from the store catalog:',
+        },
+        {
+          type: 'CREATE_LEAD',
+          leadStatus: 'INTERESTED',
+        },
+        {
+          type: 'ADD_TAGS',
+          tags: ['Browsed-Catalog'],
+        },
+      ],
     },
     {
-      id: 'rec_order',
-      name: 'Option 6: Instant Online Order & Checkout',
-      category: 'Sales & Orders',
-      icon: ShoppingBag,
-      color: 'from-emerald-500 to-teal-500',
-      description: 'Sends direct website catalog links, WhatsApp order steps, and supported payment methods for number 6 or order requests.',
-      trigger: 'KEYWORD_MATCH',
-      keyword: '6, order, buy, cart, order now, checkout',
-      replyText:
-        '🛒 *Place Your Order in 2 Easy Steps:*\n1. Browse catalog: https://stylehub.com/shop\n2. Or reply here with the item name, color & size!\n\n💳 *Payment:* UPI, Cards, Net Banking & Cash on Delivery (COD)',
-      tags: ['Hot-Buyer', 'WhatsApp-Order'],
-      leadStatus: 'NEGOTIATION',
+      id: 'b2',
+      conditionType: 'NUMBER_CHOICE',
+      value: '2',
+      title: 'Option 2: Search a Product',
+      actions: [
+        {
+          type: 'SEND_MESSAGE',
+          text: '🔍 *Product Search:* Reply with the name of the product, model, or color you are looking for (e.g. "iPhone 15 Pro" or "Black T-Shirt") and our AI will find it for you!',
+        },
+        {
+          type: 'ADD_TAGS',
+          tags: ['Search-Intent'],
+        },
+      ],
     },
     {
-      id: 'rec_discount',
-      name: 'Option 7: VIP 15% Discount Voucher Flow',
-      category: 'Lead Capture',
-      icon: Tag,
-      color: 'from-purple-500 to-indigo-500',
-      description: 'Captures hot prospects by issuing an exclusive 15% discount code and moving them directly into the sales CRM pipeline.',
-      trigger: 'KEYWORD_MATCH',
-      keyword: '7, discount, coupon, offer, promo, voucher, deal',
-      replyText:
-        '🎉 *VIP 15% Discount Voucher Unlocked!*\nUse promo code *STYLE15* on your order today.\n✨ Reply with your selected item name now to reserve your piece at discounted price!',
-      tags: ['VIP-Coupon-Claimed'],
-      leadStatus: 'INTERESTED',
+      id: 'b3',
+      conditionType: 'NUMBER_CHOICE',
+      value: '3',
+      title: 'Option 3: Offers & Deals',
+      actions: [
+        {
+          type: 'SEND_MESSAGE',
+          text: '🏷️ *Exclusive WhatsApp VIP Offer!*\nGet *Flat 15% OFF* on all purchases today using code: *DKVIP15*.\n\n✨ Reply with your selected item to claim this offer before stock runs out!',
+        },
+        {
+          type: 'CREATE_LEAD',
+          leadStatus: 'HOT',
+        },
+        {
+          type: 'ADD_TAGS',
+          tags: ['Hot-Offer-Lead'],
+        },
+      ],
     },
     {
-      id: 'rec_catalog',
-      name: 'Option 8: PDF Catalog Download Flow',
-      category: 'Content',
-      icon: FileText,
-      color: 'from-blue-500 to-cyan-500',
-      description: 'Delivers full seasonal collection lookbook PDF link instantly to prospective buyers.',
-      trigger: 'KEYWORD_MATCH',
-      keyword: '8, catalog, catalogue, pdf, lookbook, brochure',
-      replyText:
-        '📄 *Download Our 2026 Collection Catalog (PDF):*\n👉 https://stylehub.com/catalog.pdf\n\nTake a look and reply with the product code to order instantly!',
-      tags: ['Catalog-Downloaded'],
-      leadStatus: 'NEW',
+      id: 'b4',
+      conditionType: 'NUMBER_CHOICE',
+      value: '4',
+      title: 'Option 4: Talk to Support',
+      actions: [
+        {
+          type: 'HUMAN_HANDOFF',
+          text: '🧑‍💼 *Transferring to Support Manager...*\nOur live store manager has been notified and will message you directly in a moment! Please describe what you need help with.',
+        },
+      ],
     },
     {
-      id: 'rec_support',
-      name: 'Option 4: Live Human Support Escalation',
-      category: 'Customer Care',
-      icon: UserCheck,
-      color: 'from-rose-500 to-pink-500',
-      description: 'Immediately disables bot auto-replies, alerts your team on dashboard, and connects human agent.',
-      trigger: 'KEYWORD_MATCH',
-      keyword: '4, human, agent, support, talk to person, representative, call',
-      replyText:
-        '🧑‍💼 *Connecting with our Store Support Team!*\nA customer executive has been notified and will reply to you directly in this chat shortly.',
-      tags: ['Support-Requested'],
-      leadStatus: 'FOLLOW_UP',
+      id: 'b5',
+      conditionType: 'NUMBER_CHOICE',
+      value: '5',
+      title: 'Option 5: Store Location & Timings',
+      actions: [
+        {
+          type: 'SEND_MESSAGE',
+          text: '📍 *Store Location & Hours:*\n🏢 Main Commercial Boulevard, Store #42\n🗺️ GPS Map: https://maps.google.com/?q=Store\n⏰ Hours: Mon-Sat (10:00 AM - 9:00 PM)',
+        },
+        {
+          type: 'ADD_TAGS',
+          tags: ['Store-Visit-Enquiry'],
+        },
+      ],
     },
+  ]);
+
+  const [defaultAction, setDefaultAction] = useState<{
+    type: 'SEND_MESSAGE' | 'AI_FALLBACK' | 'HUMAN_HANDOFF';
+    text: string;
+  }>({
+    type: 'SEND_MESSAGE',
+    text: '👋 *Welcome to AutoMate by DK!*\n\nReply with a number to choose an option:\n1️⃣ 🛍️ Browse Trending Products\n2️⃣ 🔍 Search a Product\n3️⃣ 🏷️ Offers & Deals\n4️⃣ 🧑‍💼 Talk to Support\n5️⃣ 📍 Store Location & Hours',
+  });
+
+  const [activeBranchId, setActiveBranchId] = useState<string>('b1');
+  const [isSavingFlow, setIsSavingFlow] = useState(false);
+  const [flowSaveSuccess, setFlowSaveSuccess] = useState(false);
+
+  // Live Simulator State
+  const [simMessages, setSimMessages] = useState<Array<{ sender: 'user' | 'bot'; text: string; time: string }>>([
     {
-      id: 'rec_inactivity',
-      name: 'Smart 24-Hour Abandoned Inactivity Follow-up',
-      category: 'Re-engagement',
-      icon: Clock,
-      color: 'from-amber-600 to-red-500',
-      description: 'Automatically sends a friendly check-in message after 24 hours of customer inactivity.',
-      trigger: 'NO_RESPONSE',
-      keyword: '',
-      replyText:
-        '👋 Hi {{name}}, we noticed you were browsing our collection yesterday. Can we help you with any sizes, colors, or special offers today?',
-      tags: ['24h-Followup-Sent'],
-      leadStatus: 'FOLLOW_UP',
+      sender: 'bot',
+      text: '👋 *Welcome to AutoMate by DK!*\n\nReply with a number to choose an option:\n1️⃣ 🛍️ Browse Trending Products\n2️⃣ 🔍 Search a Product\n3️⃣ 🏷️ Offers & Deals\n4️⃣ 🧑‍💼 Talk to Support\n5️⃣ 📍 Store Location & Hours',
+      time: 'Just now',
     },
-  ];
+  ]);
+  const [simInput, setSimInput] = useState('');
+
+  useEffect(() => {
+    fetchRules();
+    fetchPrivacySettings();
+  }, []);
 
   const fetchRules = async () => {
     setIsLoading(true);
     try {
       const res: any = await api.get('/automations');
-      if (res.data) setRules(res.data);
+      setRules(res.data || []);
     } catch (err) {
       console.error('Failed to fetch automations:', err);
     } finally {
@@ -164,708 +207,816 @@ export const AutomationsPage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    fetchRules();
-  }, []);
-
-  const toggleRule = async (rule: AutomationRule) => {
+  const fetchPrivacySettings = async () => {
     try {
-      await api.put(`/automations/${rule.id}`, { isActive: !rule.isActive });
-      fetchRules();
-    } catch (err) {
-      console.error('Failed to toggle rule:', err);
-    }
-  };
-
-  const deleteRule = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this automation workflow?')) return;
-    try {
-      await api.delete(`/automations/${id}`);
-      fetchRules();
-    } catch (err) {
-      console.error('Failed to delete rule:', err);
-    }
-  };
-
-  const handleAddKeyword = (e: React.KeyboardEvent | React.MouseEvent) => {
-    if ('key' in e && e.key !== 'Enter') return;
-    if (e) e.preventDefault();
-    if (!keywordInput.trim()) return;
-
-    const newKws = keywordInput
-      .split(',')
-      .map((k) => k.trim().toLowerCase())
-      .filter((k) => k && !keywords.includes(k));
-
-    setKeywords([...keywords, ...newKws]);
-    setKeywordInput('');
-  };
-
-  const handleRemoveKeyword = (kwToRemove: string) => {
-    setKeywords(keywords.filter((k) => k !== kwToRemove));
-  };
-
-  const loadRecipeIntoBuilder = (recipe: RecipeTemplate) => {
-    setName(recipe.name);
-    setTrigger(recipe.trigger);
-    setKeywords(recipe.keyword ? recipe.keyword.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean) : []);
-    setReplyText(recipe.replyText);
-    setActionTag(recipe.tags[0] || 'Automation-Lead');
-    setLeadStatus(recipe.leadStatus || 'INTERESTED');
-    setCreateLead(true);
-    setSelectedRuleId(null);
-    setActiveTab('builder');
-  };
-
-  const handleSaveWorkflow = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      alert('Please enter a workflow name');
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const actions: any[] = [{ type: 'SEND_MESSAGE', payload: { text: replyText } }];
-
-      if (createLead) {
-        actions.push({
-          type: 'CREATE_LEAD',
-          payload: {
-            source: 'WORKFLOW_AUTOMATION',
-            status: leadStatus,
-            notes: `Generated from workflow: ${name}`,
-          },
-        });
+      const res: any = await api.get('/settings');
+      if (res.data?.settings) {
+        setOnlyUnsavedContacts(Boolean(res.data.settings.onlyUnsavedContacts));
+        if (res.data.settings.excludedNumbers) {
+          const arr = res.data.settings.excludedNumbers
+            .split(',')
+            .map((n: string) => n.trim())
+            .filter(Boolean);
+          setExcludedNumbers(arr);
+        }
       }
+    } catch (err) {
+      console.error('Failed to load privacy settings:', err);
+    }
+  };
 
-      if (actionTag.trim()) {
-        actions.push({
-          type: 'ADD_TAGS',
-          payload: { tags: [actionTag.trim()] },
-        });
-      }
+  const savePrivacySettings = async () => {
+    setIsSavingPrivacy(true);
+    setPrivacySuccess(false);
+    try {
+      await api.put('/settings/profile', {
+        onlyUnsavedContacts,
+        excludedNumbers: excludedNumbers.join(','),
+      });
+      setPrivacySuccess(true);
+      setTimeout(() => setPrivacySuccess(false), 3000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to update privacy settings');
+    } finally {
+      setIsSavingPrivacy(false);
+    }
+  };
 
-      const payload = {
-        name,
-        trigger,
-        conditions: { keyword: keywords.join(', ') },
-        actions,
-        isActive: true,
+  const addExcludedNumber = () => {
+    const val = newExcludedInput.trim();
+    if (!val) return;
+    if (!excludedNumbers.includes(val)) {
+      setExcludedNumbers([...excludedNumbers, val]);
+    }
+    setNewExcludedInput('');
+  };
+
+  const removeExcludedNumber = (num: string) => {
+    setExcludedNumbers(excludedNumbers.filter((n) => n !== num));
+  };
+
+  const handleSaveFlow = async () => {
+    setIsSavingFlow(true);
+    setFlowSaveSuccess(false);
+    try {
+      // Package flow into master automation rule
+      const flowData = {
+        triggerKeyword,
+        branches,
+        defaultAction,
       };
 
-      if (selectedRuleId) {
-        await api.put(`/automations/${selectedRuleId}`, payload);
-      } else {
-        await api.post('/automations', payload);
-      }
+      // Create individual action nodes for backward compatibility
+      const actionsList = branches.map((b) => ({
+        type: 'BRANCH_NODE',
+        keyword: b.value,
+        title: b.title,
+        actions: b.actions,
+      }));
 
-      await fetchRules();
-      setActiveTab('workflows');
-      // Reset form
-      setSelectedRuleId(null);
-      setName('');
+      await api.post('/automations', {
+        name: flowName,
+        trigger: 'KEYWORD_MATCH',
+        conditions: JSON.stringify({ keyword: triggerKeyword }),
+        actions: JSON.stringify(actionsList),
+        flowData: JSON.stringify(flowData),
+        isActive: true,
+      });
+
+      setFlowSaveSuccess(true);
+      fetchRules();
+      setTimeout(() => setFlowSaveSuccess(false), 3000);
     } catch (err: any) {
-      alert(err.message || 'Failed to save workflow');
+      alert(err.message || 'Failed to save ChatFlow');
     } finally {
-      setIsSaving(false);
+      setIsSavingFlow(false);
     }
   };
 
+  const handleSimSend = (textToSend?: string) => {
+    const text = (textToSend || simInput).trim();
+    if (!text) return;
+
+    const newMsgs = [...simMessages, { sender: 'user' as const, text, time: 'Just now' }];
+    setSimMessages(newMsgs);
+    setSimInput('');
+
+    // Simulate flow logic
+    setTimeout(() => {
+      const lower = text.toLowerCase();
+
+      // Check if matches any branch
+      const matchedBranch = branches.find((b) => {
+        if (b.conditionType === 'NUMBER_CHOICE' || b.conditionType === 'EQUALS') {
+          return lower === b.value.toLowerCase() || lower === `option ${b.value}` || lower === `${b.value}.`;
+        }
+        return lower.includes(b.value.toLowerCase());
+      });
+
+      if (matchedBranch) {
+        let reply = '';
+        matchedBranch.actions.forEach((act) => {
+          if (act.type === 'SEND_MESSAGE') {
+            reply = act.text || 'Action executed.';
+          } else if (act.type === 'SEND_CATALOG') {
+            reply = '🛍️ *Trending Catalog Products:*\n1. Premium Phone Case - ₹499\n2. Fast Wireless Charger 20W - ₹899\n3. Noise Cancelling Earbuds - ₹1,499\n\n👉 Reply with item name to order!';
+          } else if (act.type === 'HUMAN_HANDOFF') {
+            reply = act.text || '🧑‍💼 Store manager has been alerted!';
+          }
+        });
+
+        setSimMessages((prev) => [
+          ...prev,
+          {
+            sender: 'bot',
+            text: reply || `✅ Executed ${matchedBranch.title}`,
+            time: 'Just now',
+          },
+        ]);
+      } else if (lower.includes('hi') || lower.includes('hello') || lower.includes('menu') || lower.includes('start')) {
+        setSimMessages((prev) => [
+          ...prev,
+          {
+            sender: 'bot',
+            text: defaultAction.text,
+            time: 'Just now',
+          },
+        ]);
+      } else {
+        setSimMessages((prev) => [
+          ...prev,
+          {
+            sender: 'bot',
+            text: `🤖 I received "${text}". Please reply with a number (1, 2, 3, 4, 5) or type *Menu* to see available options!`,
+            time: 'Just now',
+          },
+        ]);
+      }
+    }, 600);
+  };
+
+  const addBranch = () => {
+    const newId = `b${Date.now()}`;
+    const nextNum = branches.length + 1;
+    const newBranch: FlowBranch = {
+      id: newId,
+      conditionType: 'NUMBER_CHOICE',
+      value: String(nextNum),
+      title: `Option ${nextNum}: Custom Branch`,
+      actions: [
+        {
+          type: 'SEND_MESSAGE',
+          text: `✨ Response for option ${nextNum}! Customize this message in the flow editor.`,
+        },
+      ],
+    };
+    setBranches([...branches, newBranch]);
+    setActiveBranchId(newId);
+  };
+
+  const removeBranch = (id: string) => {
+    if (branches.length <= 1) {
+      alert('You must keep at least one branch.');
+      return;
+    }
+    const filtered = branches.filter((b) => b.id !== id);
+    setBranches(filtered);
+    if (activeBranchId === id && filtered.length > 0) {
+      setActiveBranchId(filtered[0].id);
+    }
+  };
+
+  const selectedBranch = branches.find((b) => b.id === activeBranchId) || branches[0];
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-2xs">
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* Top Banner & Title */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 p-6 rounded-2xl border border-emerald-500/20 shadow-xl text-white">
         <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-emerald-500/10 text-emerald-600 rounded-xl">
-              <Zap className="w-5 h-5" />
-            </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">WhatsApp Visual Workflow Studio</h1>
+          <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs tracking-wider uppercase mb-1">
+            <Sparkles className="w-4 h-4" /> Visual Automation Engine
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Build interactive menu responses, custom keyword bots, order workflows, and automated lead pipelines in minutes.
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">ChatFlow & Automation Studio</h1>
+          <p className="text-slate-300 text-sm mt-1">
+            Build custom "If-This-Then-That" WhatsApp branching flows and protect personal contacts.
           </p>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/60 self-start sm:self-auto">
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => setActiveTab('workflows')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'workflows'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+            onClick={() => setActiveTab('privacy')}
+            className={`px-4 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 border transition ${
+              activeTab === 'privacy'
+                ? 'bg-emerald-500 border-emerald-400 text-slate-950 font-semibold shadow-lg shadow-emerald-500/25'
+                : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200'
             }`}
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Active Workflows ({rules.length})</span>
-          </button>
-          <button
-            onClick={() => {
-              setSelectedRuleId(null);
-              setName('New Custom Workflow');
-              setActiveTab('builder');
-            }}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'builder'
-                ? 'bg-white text-emerald-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Visual Flow Builder</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('recipes')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'recipes'
-                ? 'bg-white text-purple-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Pre-built Recipes</span>
+            <Shield className="w-4 h-4 text-emerald-400" />
+            Family & Privacy Filter
           </button>
         </div>
       </div>
 
-      {/* TAB 1: ACTIVE WORKFLOWS */}
-      {activeTab === 'workflows' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-800">Your Active Automated Workflows</h2>
+      {/* Tabs Navigation */}
+      <div className="flex border-b border-slate-800 gap-6">
+        <button
+          onClick={() => setActiveTab('flow_builder')}
+          className={`pb-3 font-semibold text-sm flex items-center gap-2 border-b-2 transition ${
+            activeTab === 'flow_builder'
+              ? 'border-emerald-500 text-emerald-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <GitBranch className="w-4 h-4" />
+          Visual Flow Canvas
+        </button>
+
+        <button
+          onClick={() => setActiveTab('workflows')}
+          className={`pb-3 font-semibold text-sm flex items-center gap-2 border-b-2 transition ${
+            activeTab === 'workflows'
+              ? 'border-emerald-500 text-emerald-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          Active Rules ({rules.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('privacy')}
+          className={`pb-3 font-semibold text-sm flex items-center gap-2 border-b-2 transition ${
+            activeTab === 'privacy'
+              ? 'border-emerald-500 text-emerald-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <UserX className="w-4 h-4" />
+          Excluded Numbers ({excludedNumbers.length})
+        </button>
+      </div>
+
+      {/* TAB 1: VISUAL FLOW BUILDER */}
+      {activeTab === 'flow_builder' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left / Center: Interactive Node Canvas */}
+          <div className="lg:col-span-8 space-y-6">
+            {/* Flow Header Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex-1">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                    Workflow Title
+                  </label>
+                  <input
+                    type="text"
+                    value={flowName}
+                    onChange={(e) => setFlowName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    placeholder="e.g. VIP Retail Store Automation"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={handleSaveFlow}
+                    disabled={isSavingFlow}
+                    className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-sm rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition disabled:opacity-50"
+                  >
+                    {isSavingFlow ? (
+                      'Saving Flow...'
+                    ) : flowSaveSuccess ? (
+                      <>
+                        <Check className="w-4 h-4" /> Saved Successfully!
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4" /> Save & Activate Flow
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Trigger Node */}
+              <div className="bg-slate-950/80 border border-emerald-500/30 rounded-xl p-4 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                    <Zap className="w-3.5 h-3.5" /> 1. Flow Trigger Node
+                  </div>
+                  <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2.5 py-0.5 rounded-full font-medium border border-emerald-500/20">
+                    Incoming Message
+                  </span>
+                </div>
+                <label className="text-xs text-slate-400 block mb-1">
+                  Trigger on Customer Keywords / Numbers:
+                </label>
+                <input
+                  type="text"
+                  value={triggerKeyword}
+                  onChange={(e) => setTriggerKeyword(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:ring-1 focus:ring-emerald-500 focus:outline-none font-mono"
+                  placeholder="e.g. hi, hello, menu, start, 1, 2, 3, 4, 5"
+                />
+              </div>
+            </div>
+
+            {/* Visual Branch Nodes List */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Split className="w-4 h-4 text-emerald-400" /> 2. "If-This-Then-That" Branching Options
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Each branch represents what happens when a customer sends a specific choice or word.
+                  </p>
+                </div>
+                <button
+                  onClick={addBranch}
+                  className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Branch Option
+                </button>
+              </div>
+
+              {/* Branch Selector Tabs */}
+              <div className="flex flex-wrap gap-2 pt-2">
+                {branches.map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => setActiveBranchId(b.id)}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 border transition ${
+                      activeBranchId === b.id
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md shadow-emerald-500/20'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded-full bg-slate-900/50 flex items-center justify-center text-[10px] font-bold">
+                      {b.value}
+                    </span>
+                    {b.title}
+                  </button>
+                ))}
+              </div>
+
+              {/* Active Branch Configuration Card */}
+              {selectedBranch && (
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mt-4 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm">
+                        {selectedBranch.value}
+                      </span>
+                      <input
+                        type="text"
+                        value={selectedBranch.title}
+                        onChange={(e) => {
+                          const updated = branches.map((b) =>
+                            b.id === selectedBranch.id ? { ...b, title: e.target.value } : b
+                          );
+                          setBranches(updated);
+                        }}
+                        className="bg-transparent text-white font-bold text-sm focus:outline-none border-b border-dashed border-slate-700 hover:border-emerald-500 focus:border-emerald-500 px-1 py-0.5"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-slate-400">Match Choice:</label>
+                      <input
+                        type="text"
+                        value={selectedBranch.value}
+                        onChange={(e) => {
+                          const updated = branches.map((b) =>
+                            b.id === selectedBranch.id ? { ...b, value: e.target.value } : b
+                          );
+                          setBranches(updated);
+                        }}
+                        className="w-16 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-center font-mono text-xs text-emerald-400 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                      {branches.length > 1 && (
+                        <button
+                          onClick={() => removeBranch(selectedBranch.id)}
+                          className="p-1.5 text-slate-500 hover:text-red-400 transition"
+                          title="Delete Branch"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions in this branch */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-semibold text-slate-300 block uppercase tracking-wider">
+                      Actions executed when customer chooses "{selectedBranch.value}":
+                    </label>
+
+                    {/* Action 1: Response Message */}
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                          <MessageSquare className="w-3.5 h-3.5" /> Action: WhatsApp Reply Message
+                        </div>
+                        <select
+                          value={selectedBranch.actions[0]?.type || 'SEND_MESSAGE'}
+                          onChange={(e) => {
+                            const newType = e.target.value as any;
+                            const updated = branches.map((b) => {
+                              if (b.id === selectedBranch.id) {
+                                const acts = [...b.actions];
+                                acts[0] = { ...acts[0], type: newType };
+                                return { ...b, actions: acts };
+                              }
+                              return b;
+                            });
+                            setBranches(updated);
+                          }}
+                          className="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        >
+                          <option value="SEND_MESSAGE">💬 Send Text Message</option>
+                          <option value="SEND_CATALOG">🛍️ Send Product Catalog</option>
+                          <option value="HUMAN_HANDOFF">🧑‍💼 Transfer to Support Manager</option>
+                        </select>
+                      </div>
+
+                      {selectedBranch.actions[0]?.type !== 'SEND_CATALOG' ? (
+                        <textarea
+                          rows={4}
+                          value={selectedBranch.actions[0]?.text || ''}
+                          onChange={(e) => {
+                            const updated = branches.map((b) => {
+                              if (b.id === selectedBranch.id) {
+                                const acts = [...b.actions];
+                                acts[0] = { ...acts[0], text: e.target.value };
+                                return { ...b, actions: acts };
+                              }
+                              return b;
+                            });
+                            setBranches(updated);
+                          }}
+                          placeholder="Type response text here... Use {{name}} for customer's name."
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-100 font-sans focus:ring-1 focus:ring-emerald-500 focus:outline-none leading-relaxed"
+                        />
+                      ) : (
+                        <div className="p-3 bg-slate-950/60 border border-dashed border-emerald-500/30 rounded-lg text-xs text-slate-300 flex items-center gap-2">
+                          <ShoppingBag className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          <span>
+                            Automatically pulls active products from your **Products** catalog with photo, price, and instant order instructions.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action 2: Lead CRM Status */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
+                        <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
+                          <Flame className="w-3.5 h-3.5 text-amber-400" /> Capture Lead in CRM:
+                        </label>
+                        <select
+                          value={selectedBranch.actions.find((a) => a.type === 'CREATE_LEAD')?.leadStatus || 'INTERESTED'}
+                          onChange={(e) => {
+                            const newStatus = e.target.value;
+                            const updated = branches.map((b) => {
+                              if (b.id === selectedBranch.id) {
+                                const existing = b.actions.filter((a) => a.type !== 'CREATE_LEAD');
+                                existing.push({ type: 'CREATE_LEAD', leadStatus: newStatus });
+                                return { ...b, actions: existing };
+                              }
+                              return b;
+                            });
+                            setBranches(updated);
+                          }}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        >
+                          <option value="NEW">🎯 New Inquirer</option>
+                          <option value="INTERESTED">🔥 Interested Prospect</option>
+                          <option value="HOT">⚡ Hot Deal Lead</option>
+                          <option value="NEGOTIATION">💳 Checkout / Order Lead</option>
+                        </select>
+                      </div>
+
+                      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
+                        <label className="text-xs font-semibold text-slate-300 block mb-1.5 flex items-center gap-1.5">
+                          <Tag className="w-3.5 h-3.5 text-blue-400" /> Apply CRM Customer Tag:
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedBranch.actions.find((a) => a.type === 'ADD_TAGS')?.tags?.[0] || 'Store-Lead'}
+                          onChange={(e) => {
+                            const newTag = e.target.value;
+                            const updated = branches.map((b) => {
+                              if (b.id === selectedBranch.id) {
+                                const existing = b.actions.filter((a) => a.type !== 'ADD_TAGS');
+                                existing.push({ type: 'ADD_TAGS', tags: [newTag] });
+                                return { ...b, actions: existing };
+                              }
+                              return b;
+                            });
+                            setBranches(updated);
+                          }}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          placeholder="e.g. Catalog-Viewer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Default Greeting / Fallback Menu Node */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-emerald-400" /> 3. Default Welcome Greeting Menu (Sent for 'Hi' or Unrecognized Text)
+                </h3>
+              </div>
+              <textarea
+                rows={5}
+                value={defaultAction.text}
+                onChange={(e) => setDefaultAction({ ...defaultAction, text: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-100 font-sans focus:ring-1 focus:ring-emerald-500 focus:outline-none leading-relaxed"
+              />
+            </div>
+          </div>
+
+          {/* Right Column: Live Interactive WhatsApp Simulator */}
+          <div className="lg:col-span-4">
+            <div className="sticky top-6 bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-5 h-5 text-emerald-400" />
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Live Flow Simulator</h4>
+                    <p className="text-[11px] text-slate-400">Test your chatbot in real-time</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() =>
+                    setSimMessages([
+                      {
+                        sender: 'bot',
+                        text: defaultAction.text,
+                        time: 'Just now',
+                      },
+                    ])
+                  }
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800 hover:bg-slate-700 transition text-xs flex items-center gap-1"
+                  title="Reset Simulator"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Chat Screen Mockup */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl h-[440px] flex flex-col justify-between overflow-hidden shadow-inner">
+                {/* Header Mockup */}
+                <div className="bg-slate-900 px-3.5 py-2.5 border-b border-slate-800 flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-slate-950 font-bold text-xs">
+                    DK
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white leading-tight">AutoMate by DK</p>
+                    <p className="text-[10px] text-emerald-400 leading-none">🟢 online bot</p>
+                  </div>
+                </div>
+
+                {/* Messages Body */}
+                <div className="flex-1 p-3 overflow-y-auto space-y-2.5 text-xs">
+                  {simMessages.map((m, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[85%] rounded-2xl px-3.5 py-2 whitespace-pre-wrap leading-relaxed shadow-md ${
+                          m.sender === 'user'
+                            ? 'bg-emerald-600 text-white rounded-tr-none'
+                            : 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700'
+                        }`}
+                      >
+                        {m.text}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Quick Choice Buttons */}
+                <div className="px-2 py-1.5 bg-slate-900/80 border-t border-slate-800 flex gap-1.5 overflow-x-auto">
+                  {branches.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => handleSimSend(b.value)}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-300 text-[10px] font-semibold rounded-lg border border-slate-700 whitespace-nowrap transition"
+                    >
+                      Send {b.value}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => handleSimSend('hi')}
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-300 text-[10px] font-semibold rounded-lg border border-slate-700 whitespace-nowrap transition"
+                  >
+                    Send 'Hi'
+                  </button>
+                </div>
+
+                {/* Input Bar */}
+                <div className="p-2 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={simInput}
+                    onChange={(e) => setSimInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSimSend()}
+                    placeholder="Type a message (e.g. 1, 2, hi)..."
+                    className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <button
+                    onClick={() => handleSimSend()}
+                    className="p-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl transition shadow-md"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-slate-300">
+                <p className="font-semibold text-emerald-400 mb-0.5">💡 Tip:</p>
+                Click any quick button above or type numbers (1 to {branches.length}) to test how customer flows execute live!
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: PRIVACY & PERSONAL CONTACT FILTER */}
+      {activeTab === 'privacy' && (
+        <div className="max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+            <div className="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400">
+              <Shield className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white">Family & Personal Contact Protection</h2>
+              <p className="text-xs text-slate-400">
+                Ensure your personal family, friends, and staff never get disturbed by automated bot replies.
+              </p>
+            </div>
+          </div>
+
+          {/* Toggle 1: Only Unsaved Contacts */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-emerald-400" />
+                <h4 className="text-sm font-bold text-white">
+                  Only Automate Unsaved Customer Numbers
+                </h4>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                When enabled, the automation will **only respond to new / unsaved customer phone numbers**. Anyone already saved in your personal phone contact book will be completely ignored by the bot, allowing you to chat normally.
+              </p>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+              <input
+                type="checkbox"
+                checked={onlyUnsavedContacts}
+                onChange={(e) => setOnlyUnsavedContacts(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+            </label>
+          </div>
+
+          {/* Section 2: Excluded Numbers Blacklist */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4">
+            <div>
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <UserX className="w-4 h-4 text-red-400" /> Excluded Phone Numbers Blacklist
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Add specific numbers (family members, personal friends, VIPs) that should **NEVER** receive automated replies under any circumstance.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newExcludedInput}
+                onChange={(e) => setNewExcludedInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addExcludedNumber()}
+                placeholder="Enter phone number (e.g. +919876543210 or 9876543210)"
+                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              <button
+                onClick={addExcludedNumber}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" /> Add Number
+              </button>
+            </div>
+
+            {/* List of excluded numbers tags */}
+            <div className="flex flex-wrap gap-2 pt-2">
+              {excludedNumbers.map((num) => (
+                <span
+                  key={num}
+                  className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-lg shadow-sm font-mono"
+                >
+                  <PhoneCall className="w-3 h-3 text-red-400" />
+                  {num}
+                  <button
+                    onClick={() => removeExcludedNumber(num)}
+                    className="text-slate-400 hover:text-red-400 transition ml-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </span>
+              ))}
+
+              {excludedNumbers.length === 0 && (
+                <p className="text-xs text-slate-500 italic">No numbers excluded yet.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+            {privacySuccess ? (
+              <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
+                <Check className="w-4 h-4" /> Privacy settings saved successfully!
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400">
+                Changes take effect immediately on your live WhatsApp number.
+              </span>
+            )}
+
             <button
-              onClick={() => setActiveTab('recipes')}
-              className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold flex items-center gap-1"
+              onClick={savePrivacySettings}
+              disabled={isSavingPrivacy}
+              className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition disabled:opacity-50"
             >
-              <span>Explore Pre-built Menu Recipes</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              {isSavingPrivacy ? 'Saving...' : 'Save Privacy Filters'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: ACTIVE RULES LIST */}
+      {activeTab === 'workflows' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-white">Active Automation Workflows</h2>
+              <p className="text-xs text-slate-400">
+                All automation rules currently running on your WhatsApp business account.
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveTab('flow_builder')}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" /> Create New Flow
             </button>
           </div>
 
-          {rules.length === 0 && !isLoading && (
-            <div className="bg-white rounded-3xl border border-dashed border-slate-300 p-12 text-center space-y-4">
-              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">No automation workflows created yet</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-                  Start with our pre-built 1-click recipes (Location, Orders, VIP Discounts) or build your custom workflow from scratch.
-                </p>
-              </div>
-              <div className="flex items-center justify-center gap-3 pt-2">
-                <button
-                  onClick={() => setActiveTab('recipes')}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs shadow-md shadow-emerald-500/20"
-                >
-                  Browse Menu Recipes
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedRuleId(null);
-                    setActiveTab('builder');
-                  }}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs"
-                >
-                  Open Visual Builder
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {rules.map((rule) => {
-              let conditions: any = {};
-              try {
-                conditions = typeof rule.conditions === 'string' ? JSON.parse(rule.conditions) : rule.conditions || {};
-              } catch {
-                conditions = {};
-              }
-
-              let actions: any[] = [];
-              try {
-                actions = typeof rule.actions === 'string' ? JSON.parse(rule.actions) : rule.actions || [];
-              } catch {
-                actions = [];
-              }
-
-              const keywordDisplay = conditions.keyword || 'All messages';
-              const replyMsg = actions[0]?.payload?.text || 'Automated action';
-
-              return (
-                <div
-                  key={rule.id}
-                  className="bg-white rounded-3xl border border-slate-200 p-5 shadow-2xs hover:shadow-lg transition-all flex flex-col justify-between group relative overflow-hidden"
-                >
-                  <div className="space-y-4">
-                    {/* Status & Trigger Badge */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-200/60 uppercase tracking-wider flex items-center gap-1">
-                        <Zap className="w-3 h-3 text-emerald-500" />
-                        {rule.trigger}
-                      </span>
-                      <button
-                        onClick={() => toggleRule(rule)}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 transition-colors ${
-                          rule.isActive
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        <Power className="w-3 h-3" />
-                        <span>{rule.isActive ? 'Active' : 'Paused'}</span>
-                      </button>
-                    </div>
-
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">
-                        {rule.name}
-                      </h3>
-                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
-                        {rule.description || 'Configured WhatsApp Flow'}
-                      </p>
-                    </div>
-
-                    {/* Visual Flow Mini Node Diagram */}
-                    <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 space-y-2.5 text-xs">
-                      {/* Trigger Node */}
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-                          <Bot className="w-3 h-3" />
-                        </div>
-                        <div className="truncate">
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block">When Customer Says:</span>
-                          <span className="font-semibold text-slate-800 text-[11px] truncate block bg-white px-1.5 py-0.5 rounded border border-slate-200/60">
-                            {keywordDisplay}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-center py-0.5 text-slate-300">
-                        <ArrowDown className="w-3.5 h-3.5" />
-                      </div>
-
-                      {/* Action Node */}
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
-                          <MessageSquare className="w-3 h-3" />
-                        </div>
-                        <div className="truncate">
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Bot Reply Message:</span>
-                          <span className="text-slate-700 text-[11px] truncate block font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200/60">
-                            {replyMsg.substring(0, 45)}...
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Stats */}
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                      <span>Executions</span>
-                      <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                        {rule.executionCount} triggers
-                      </span>
-                    </div>
+          <div className="space-y-3 pt-2">
+            {rules.map((r) => (
+              <div
+                key={r.id}
+                className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-700 transition"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <h4 className="text-sm font-bold text-white">{r.name}</h4>
+                    <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700 font-mono">
+                      {r.trigger}
+                    </span>
                   </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <button
-                      onClick={() => {
-                        setSelectedRuleId(rule.id);
-                        setName(rule.name);
-                        setTrigger(rule.trigger);
-                        setKeywords(
-                          conditions.keyword
-                            ? String(conditions.keyword)
-                                .split(',')
-                                .map((k) => k.trim())
-                                .filter(Boolean)
-                            : []
-                        );
-                        setReplyText(replyMsg);
-                        setActiveTab('builder');
-                      }}
-                      className="text-xs text-slate-700 hover:text-emerald-600 font-bold flex items-center gap-1"
-                    >
-                      <span>Edit Workflow</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      onClick={() => deleteRule(rule.id)}
-                      className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
-                      title="Delete workflow"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: VISUAL WORKFLOW BUILDER */}
-      {activeTab === 'builder' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left / Middle: Visual Step-by-Step Flow Canvas */}
-          <div className="lg:col-span-7 space-y-6">
-            <form onSubmit={handleSaveWorkflow} className="space-y-5">
-              {/* Workflow Name Bar */}
-              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-2xs">
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">Workflow Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Option 5 - Store Location & GPS"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
-                />
-              </div>
-
-              {/* NODE 1: TRIGGER */}
-              <div className="bg-white p-6 rounded-3xl border-2 border-emerald-500/30 shadow-sm relative space-y-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-xs">
-                    1
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">TRIGGER: When This Happens</h3>
-                    <p className="text-[11px] text-slate-500">Define what customer action starts this automation workflow.</p>
-                  </div>
+                  <p className="text-xs text-slate-400">
+                    Executed: <span className="text-emerald-400 font-semibold">{r.executionCount}</span> times
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+                <div className="flex items-center gap-2">
                   <button
-                    type="button"
-                    onClick={() => setTrigger('KEYWORD_MATCH')}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
-                      trigger === 'KEYWORD_MATCH'
-                        ? 'border-emerald-500 bg-emerald-50/50 shadow-xs'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100/60'
-                    }`}
+                    onClick={() => setActiveTab('flow_builder')}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900">Keyword / Number Match</span>
-                      {trigger === 'KEYWORD_MATCH' && <Check className="w-4 h-4 text-emerald-600" />}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">Customer types a menu number (e.g. 5, 6) or specific words.</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTrigger('GREETING')}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
-                      trigger === 'GREETING'
-                        ? 'border-emerald-500 bg-emerald-50/50 shadow-xs'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100/60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900">Greeting / First Message</span>
-                      {trigger === 'GREETING' && <Check className="w-4 h-4 text-emerald-600" />}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">Customer texts Hi, Hello, Start or opens a new chat.</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTrigger('NO_RESPONSE')}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
-                      trigger === 'NO_RESPONSE'
-                        ? 'border-emerald-500 bg-emerald-50/50 shadow-xs'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100/60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900">24h Customer Inactivity</span>
-                      {trigger === 'NO_RESPONSE' && <Check className="w-4 h-4 text-emerald-600" />}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">Customer asked something but went idle for 24 hours.</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTrigger('MESSAGE_RECEIVED')}
-                    className={`p-3 rounded-2xl border text-left transition-all ${
-                      trigger === 'MESSAGE_RECEIVED'
-                        ? 'border-emerald-500 bg-emerald-50/50 shadow-xs'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100/60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900">Every Inbound Message</span>
-                      {trigger === 'MESSAGE_RECEIVED' && <Check className="w-4 h-4 text-emerald-600" />}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">Triggers on every single message received.</p>
+                    Edit Flow
                   </button>
                 </div>
-
-                {/* Keywords Chips Box */}
-                {trigger === 'KEYWORD_MATCH' && (
-                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
-                    <label className="text-xs font-bold text-slate-700 block">Trigger Keywords & Numbers</label>
-                    <div className="flex flex-wrap gap-1.5 min-h-[32px] items-center">
-                      {keywords.map((kw) => (
-                        <span
-                          key={kw}
-                          className="bg-white border border-slate-200 text-slate-800 text-xs font-bold px-2.5 py-1 rounded-xl flex items-center gap-1.5 shadow-2xs"
-                        >
-                          <span>{kw}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveKeyword(kw)}
-                            className="text-slate-400 hover:text-red-500 text-xs font-black"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="text"
-                          placeholder="Type keyword & press Enter..."
-                          value={keywordInput}
-                          onChange={(e) => setKeywordInput(e.target.value)}
-                          onKeyDown={handleAddKeyword}
-                          className="bg-transparent border-none text-xs text-slate-800 focus:outline-none placeholder:text-slate-400 min-w-[160px]"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAddKeyword}
-                          className="text-[11px] bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-2 py-0.5 rounded-lg"
-                        >
-                          Add
-                        </button>
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-slate-400">
-                      💡 Tip: Add both numbers and natural words (e.g. <span className="font-mono text-slate-600">5, location, map, address</span>).
-                    </p>
-                  </div>
-                )}
               </div>
+            ))}
 
-              {/* CONNECTOR LINE */}
-              <div className="flex justify-center -my-2">
-                <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shadow-2xs">
-                  <ArrowDown className="w-4 h-4" />
-                </div>
+            {rules.length === 0 && !isLoading && (
+              <div className="text-center py-12 text-slate-500 text-xs">
+                No custom automation rules created yet. Click **Create New Flow** to design your first flow!
               </div>
-
-              {/* NODE 2: ACTION */}
-              <div className="bg-white p-6 rounded-3xl border-2 border-blue-500/30 shadow-sm space-y-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-xl bg-blue-500 text-white flex items-center justify-center font-black text-xs">
-                    2
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">ACTION: Send WhatsApp Reply Message</h3>
-                    <p className="text-[11px] text-slate-500">
-                      Craft the response sent to the customer's WhatsApp instantly.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700">WhatsApp Message Content</label>
-                    <div className="flex items-center gap-1 text-[10px] text-slate-500">
-                      <span>Dynamic tags:</span>
-                      <button
-                        type="button"
-                        onClick={() => setReplyText((prev) => prev + ' {{name}}')}
-                        className="font-mono bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-slate-700"
-                      >
-                        &#123;&#123;name&#125;&#125;
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReplyText((prev) => prev + ' {{phone}}')}
-                        className="font-mono bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-slate-700"
-                      >
-                        &#123;&#123;phone&#125;&#125;
-                      </button>
-                    </div>
-                  </div>
-
-                  <textarea
-                    rows={5}
-                    required
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    placeholder="Type your WhatsApp message response..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-sans transition-all leading-relaxed"
-                  />
-                </div>
-
-                {/* Additional Action Pipeline: Tags & CRM */}
-                <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">Add Customer CRM Tag</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Store-Inquiry, VIP"
-                      value={actionTag}
-                      onChange={(e) => setActionTag(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">Move Lead Pipeline Stage</label>
-                    <select
-                      value={leadStatus}
-                      onChange={(e) => setLeadStatus(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="NEW">New Lead</option>
-                      <option value="INTERESTED">Interested</option>
-                      <option value="FOLLOW_UP">Follow Up</option>
-                      <option value="NEGOTIATION">Negotiation</option>
-                      <option value="CONVERTED">Converted / Paid</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Submit / Save Bar */}
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('workflows')}
-                  className="px-5 py-2.5 rounded-2xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-6 py-2.5 rounded-2xl text-xs shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2"
-                >
-                  <Zap className="w-4 h-4 fill-slate-950" />
-                  <span>{isSaving ? 'Saving Workflow...' : selectedRuleId ? 'Update Workflow' : 'Publish Automation'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Right: Live Interactive WhatsApp Device Preview */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="sticky top-6">
-              <div className="bg-slate-900 rounded-[36px] p-4 shadow-2xl border-4 border-slate-800 text-white max-w-sm mx-auto">
-                {/* Phone Notch & Header */}
-                <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 mb-3 text-[11px] text-slate-400">
-                  <span className="font-semibold text-white">WhatsApp</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span>Live Preview</span>
-                  </div>
-                </div>
-
-                {/* WhatsApp Chat Header */}
-                <div className="bg-emerald-800/80 backdrop-blur p-3 rounded-2xl flex items-center gap-2.5 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-white text-emerald-900 flex items-center justify-center font-bold text-xs">
-                    {currentOrganization?.name?.charAt(0) || 'S'}
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-white">{currentOrganization?.name || 'StyleHub Fashion'}</h4>
-                    <p className="text-[10px] text-emerald-200">Official Business Bot</p>
-                  </div>
-                </div>
-
-                {/* Chat Bubbles */}
-                <div className="space-y-3 min-h-[300px] flex flex-col justify-end p-2 bg-[#0b141a]/60 rounded-2xl">
-                  {/* Customer Trigger Message */}
-                  <div className="flex justify-end">
-                    <div className="bg-[#005c4b] text-white p-2.5 rounded-2xl rounded-tr-xs text-xs max-w-[80%] shadow-xs">
-                      <p>{keywords[0] || '5'}</p>
-                      <span className="text-[9px] text-emerald-300/80 block text-right mt-1">Just now</span>
-                    </div>
-                  </div>
-
-                  {/* Automated Bot Reply */}
-                  <div className="flex justify-start">
-                    <div className="bg-[#202c33] text-white p-3 rounded-2xl rounded-tl-xs text-xs max-w-[90%] shadow-xs whitespace-pre-wrap leading-relaxed">
-                      {replyText.replace('{{name}}', 'Rahul').replace('{{phone}}', '+91 98765 43210') ||
-                        'Type your message above to see preview here...'}
-                      <span className="text-[9px] text-slate-400 block text-right mt-1">Just now</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 text-center text-[10px] text-slate-400">
-                  ⚡ Updates in real-time as you edit the workflow!
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: PRE-BUILT RECIPES LIBRARY */}
-      {activeTab === 'recipes' && (
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Pre-built WhatsApp Menu & Growth Recipes</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Install ready-to-use business automations in 1 click. You can customize the text, discounts, and links anytime.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {recipes.map((rec) => {
-              const IconComp = rec.icon;
-              return (
-                <div
-                  key={rec.id}
-                  className="bg-white rounded-3xl border border-slate-200 p-5 shadow-2xs hover:shadow-xl transition-all flex flex-col justify-between group"
-                >
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className={`p-2.5 rounded-2xl bg-gradient-to-br ${rec.color} text-white shadow-md`}>
-                        <IconComp className="w-5 h-5" />
-                      </div>
-                      <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                        {rec.category}
-                      </span>
-                    </div>
-
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">
-                        {rec.name}
-                      </h3>
-                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">{rec.description}</p>
-                    </div>
-
-                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-1.5 text-xs">
-                      <div className="text-[11px] text-slate-600">
-                        <span className="font-bold text-slate-400 uppercase text-[10px] block">Trigger Keywords:</span>
-                        <span className="font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 inline-block mt-0.5">
-                          {rec.keyword || 'Inactivity Timer (24h)'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 pt-3 border-t border-slate-100">
-                    <button
-                      onClick={() => loadRecipeIntoBuilder(rec)}
-                      className="w-full bg-slate-900 hover:bg-emerald-500 hover:text-slate-950 text-white text-xs font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Use This Recipe</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+            )}
           </div>
         </div>
       )}

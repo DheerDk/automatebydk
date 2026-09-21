@@ -95,6 +95,38 @@ export class AutomationService {
           data: { executionCount: { increment: 1 } },
         });
 
+        // Check if rule has visual flowData graph
+        const ruleFlowData = (rule as any).flowData;
+        if (ruleFlowData) {
+          try {
+            const flowGraph = JSON.parse(ruleFlowData);
+            if (flowGraph.nodes && Array.isArray(flowGraph.nodes)) {
+              // Execute visual flow graph branches
+              for (const node of flowGraph.nodes) {
+                if (node.type === 'condition' || node.type === 'branch') {
+                  const branchKeyword = (node.data?.keyword || '').toLowerCase().trim();
+                  if (branchKeyword && (normalizedMsg === branchKeyword || normalizedMsg.includes(branchKeyword))) {
+                    // Match found in branch -> execute connected action nodes
+                    const connectedNodeIds = (flowGraph.edges || [])
+                      .filter((e: any) => e.source === node.id)
+                      .map((e: any) => e.target);
+
+                    const targetActionNodes = flowGraph.nodes.filter((n: any) => connectedNodeIds.includes(n.id) && n.type === 'action');
+                    for (const aNode of targetActionNodes) {
+                      await this.executeAction(organizationId, customer, conversationId, {
+                        type: aNode.data?.actionType || AutomationActionType.SEND_MESSAGE,
+                        payload: aNode.data || {},
+                      }, context);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (flowErr) {
+            logger.warn('Error parsing rule flowData:', flowErr);
+          }
+        }
+
         let actions: any[] = [];
         try {
           actions = typeof rule.actions === 'string' ? JSON.parse(rule.actions) : (rule.actions || []);
@@ -133,7 +165,7 @@ export class AutomationService {
     organizationId: string,
     customer: any,
     conversationId: string | undefined,
-    action: { type: AutomationActionType; payload: any; delayMinutes?: number },
+    action: { type: AutomationActionType | string; payload: any; delayMinutes?: number },
     context: AutomationExecutionContext
   ) {
     try {
@@ -141,6 +173,7 @@ export class AutomationService {
 
       switch (type) {
         case AutomationActionType.SEND_MESSAGE:
+        case 'SEND_MESSAGE':
           if (payload.text) {
             let messageContent = payload.text
               .replace(/\{\{name\}\}/gi, customer.name || 'Valued Customer')
@@ -150,6 +183,47 @@ export class AutomationService {
               organizationId,
               to: customer.phone,
               content: messageContent,
+              mediaUrl: payload.mediaUrl,
+              conversationId,
+              customerId: customer.id,
+            });
+          }
+          break;
+
+        case 'SEND_CATALOG':
+        case 'SEND_PRODUCTS':
+          // Fetch active store products
+          const products = await prisma.product.findMany({
+            where: { organizationId, isActive: true },
+            take: 4,
+          });
+
+          let catalogMsg = '🛍️ *Trending Products Catalog:*\n\n';
+          products.forEach((p, idx) => {
+            const price = p.discountPrice ? `₹${p.discountPrice} (was ₹${p.price})` : `₹${p.price}`;
+            catalogMsg += `${idx + 1}. *${p.name}* - ${price}\n${p.description || ''}\n\n`;
+          });
+          catalogMsg += '👉 Reply with product name to order now!';
+
+          return await WhatsAppService.sendMessage({
+            organizationId,
+            to: customer.phone,
+            content: catalogMsg,
+            mediaUrl: products[0]?.images ? JSON.parse(products[0].images)[0] : undefined,
+            conversationId,
+            customerId: customer.id,
+          });
+
+        case 'HUMAN_HANDOFF':
+          if (conversationId) {
+            await prisma.conversation.update({
+              where: { id: conversationId },
+              data: { status: 'HUMAN_TAKEN_OVER' },
+            });
+            return await WhatsAppService.sendMessage({
+              organizationId,
+              to: customer.phone,
+              content: payload.text || '🧑‍💼 A human store manager has been notified and will assist you shortly!',
               conversationId,
               customerId: customer.id,
             });
@@ -157,19 +231,21 @@ export class AutomationService {
           break;
 
         case AutomationActionType.CREATE_LEAD:
+        case 'CREATE_LEAD':
           await prisma.lead.create({
             data: {
               organizationId,
               customerId: customer.id,
-              status: LeadStatus.NEW,
+              status: payload.leadStatus || LeadStatus.NEW,
               source: payload.source || 'AUTOMATION',
-              notes: payload.notes || 'Auto-created by automation rule',
+              notes: payload.notes || 'Auto-created by visual automation flow',
               estimatedValue: payload.estimatedValue ? parseFloat(payload.estimatedValue) : null,
             },
           });
           break;
 
         case AutomationActionType.UPDATE_LEAD_STATUS:
+        case 'UPDATE_LEAD_STATUS':
           if (context.leadId && payload.status) {
             await prisma.lead.update({
               where: { id: context.leadId },
@@ -179,6 +255,7 @@ export class AutomationService {
           break;
 
         case AutomationActionType.ADD_TAGS:
+        case 'ADD_TAGS':
           if (payload.tags && Array.isArray(payload.tags)) {
             let currentTags: string[] = [];
             try {
@@ -195,6 +272,7 @@ export class AutomationService {
           break;
 
         case AutomationActionType.ASSIGN_STAFF:
+        case 'ASSIGN_STAFF':
           if (conversationId && payload.userId) {
             await prisma.conversation.update({
               where: { id: conversationId },

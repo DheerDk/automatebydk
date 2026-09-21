@@ -42,6 +42,8 @@ export interface BusinessSettings {
   welcomeMessage?: string | null;
   aiAutoReplyEnabled: boolean;
   humanHandoffKeywords: string[];
+  onlyUnsavedContacts?: boolean;
+  excludedNumbers?: string | null;
   address?: string | null;
   phone?: string | null;
   email?: string | null;
@@ -165,6 +167,7 @@ export interface AutomationRule {
   trigger: string;
   conditions: Record<string, any>;
   actions: Array<{ type: string; payload: any; delayMinutes?: number }>;
+  flowData?: string | null;
   isActive: boolean;
   executionCount: number;
   createdAt: string;
