@@ -59,33 +59,95 @@ export class AutomationService {
         }
 
         let matches = false;
+        let matchedBranchActions: any[] | null = null;
+        let defaultFlowAction: any = null;
 
-        if (rule.trigger === AutomationTrigger.GREETING) {
-          const greetingKeywords = ['hi', 'hello', 'hey', 'start', 'menu', 'namaste'];
-          if (conditions.keyword) {
-            const extra = String(conditions.keyword).split(',').map((k) => k.trim().toLowerCase());
-            greetingKeywords.push(...extra);
+        // Parse visual flowData if present
+        let parsedFlowData: any = null;
+        if ((rule as any).flowData) {
+          try {
+            parsedFlowData = typeof (rule as any).flowData === 'string'
+              ? JSON.parse((rule as any).flowData)
+              : (rule as any).flowData;
+          } catch (e) {
+            parsedFlowData = null;
           }
-          if (greetingKeywords.some((kw) => normalizedMsg === kw || normalizedMsg.startsWith(kw))) {
-            matches = true;
-          }
-        } else if (rule.trigger === AutomationTrigger.KEYWORD_MATCH || trigger === AutomationTrigger.KEYWORD_MATCH) {
-          if (conditions.keyword) {
-            const keywords = String(conditions.keyword)
-              .split(',')
-              .map((k) => k.trim().toLowerCase())
-              .filter(Boolean);
+        }
 
-            for (const kw of keywords) {
-              // Exact match or substring / word boundary match
-              if (normalizedMsg === kw || normalizedMsg.includes(kw)) {
+        // 1. Check if matching any specific branch inside flowData
+        if (parsedFlowData && parsedFlowData.branches && Array.isArray(parsedFlowData.branches)) {
+          for (const branch of parsedFlowData.branches) {
+            const bVal = String(branch.value || '').trim().toLowerCase();
+            const bTitle = String(branch.title || '').trim().toLowerCase();
+            
+            // Check condition types
+            if (branch.conditionType === 'NUMBER_CHOICE' || branch.conditionType === 'EQUALS') {
+              if (
+                normalizedMsg === bVal ||
+                normalizedMsg === `option ${bVal}` ||
+                normalizedMsg === `${bVal}.` ||
+                normalizedMsg === `#${bVal}` ||
+                normalizedMsg === bTitle
+              ) {
                 matches = true;
+                matchedBranchActions = branch.actions || [];
+                break;
+              }
+            } else if (branch.conditionType === 'CONTAINS') {
+              if (bVal && normalizedMsg.includes(bVal)) {
+                matches = true;
+                matchedBranchActions = branch.actions || [];
                 break;
               }
             }
           }
-        } else if (rule.trigger === AutomationTrigger.MESSAGE_RECEIVED) {
-          matches = true;
+
+          if (parsedFlowData.defaultAction) {
+            defaultFlowAction = parsedFlowData.defaultAction;
+          }
+        }
+
+        // 2. If not matched to a specific branch, check main trigger keywords (e.g. greeting or menu trigger)
+        if (!matches) {
+          if (rule.trigger === AutomationTrigger.GREETING) {
+            const greetingKeywords = ['hi', 'hello', 'hey', 'start', 'menu', 'namaste', 'help'];
+            if (conditions.keyword) {
+              const extra = String(conditions.keyword).split(',').map((k) => k.trim().toLowerCase());
+              greetingKeywords.push(...extra);
+            }
+            if (greetingKeywords.some((kw) => normalizedMsg === kw || normalizedMsg.startsWith(kw))) {
+              matches = true;
+            }
+          } else if (rule.trigger === AutomationTrigger.KEYWORD_MATCH || trigger === AutomationTrigger.KEYWORD_MATCH) {
+            if (conditions.keyword) {
+              const keywords = String(conditions.keyword)
+                .split(',')
+                .map((k) => k.trim().toLowerCase())
+                .filter(Boolean);
+
+              for (const kw of keywords) {
+                if (normalizedMsg === kw || normalizedMsg.includes(kw)) {
+                  matches = true;
+                  break;
+                }
+              }
+            }
+          } else if (rule.trigger === AutomationTrigger.MESSAGE_RECEIVED) {
+            // General message trigger: if conditions.keyword exists, check it
+            if (conditions.keyword) {
+              const keywords = String(conditions.keyword)
+                .split(',')
+                .map((k) => k.trim().toLowerCase())
+                .filter(Boolean);
+              if (keywords.length > 0) {
+                matches = keywords.some((kw) => normalizedMsg === kw || normalizedMsg.includes(kw));
+              } else {
+                matches = true;
+              }
+            } else {
+              matches = true;
+            }
+          }
         }
 
         if (!matches) continue;
@@ -95,54 +157,46 @@ export class AutomationService {
           data: { executionCount: { increment: 1 } },
         });
 
-        // Check if rule has visual flowData graph
-        const ruleFlowData = (rule as any).flowData;
-        if (ruleFlowData) {
+        let actionsToExecute: any[] = [];
+
+        if (matchedBranchActions && matchedBranchActions.length > 0) {
+          // Customer chose a specific branch option (e.g. 1, 2, 3)
+          actionsToExecute = matchedBranchActions;
+        } else if (defaultFlowAction && defaultFlowAction.text) {
+          // Sent greeting or menu keyword -> execute default welcome menu
+          actionsToExecute = [
+            {
+              type: defaultFlowAction.type || AutomationActionType.SEND_MESSAGE,
+              payload: {
+                text: defaultFlowAction.text,
+                mediaUrl: defaultFlowAction.mediaUrl,
+              },
+            },
+          ];
+        } else {
+          // Standard actions stored on rule
           try {
-            const flowGraph = JSON.parse(ruleFlowData);
-            if (flowGraph.nodes && Array.isArray(flowGraph.nodes)) {
-              // Execute visual flow graph branches
-              for (const node of flowGraph.nodes) {
-                if (node.type === 'condition' || node.type === 'branch') {
-                  const branchKeyword = (node.data?.keyword || '').toLowerCase().trim();
-                  if (branchKeyword && (normalizedMsg === branchKeyword || normalizedMsg.includes(branchKeyword))) {
-                    // Match found in branch -> execute connected action nodes
-                    const connectedNodeIds = (flowGraph.edges || [])
-                      .filter((e: any) => e.source === node.id)
-                      .map((e: any) => e.target);
-
-                    const targetActionNodes = flowGraph.nodes.filter((n: any) => connectedNodeIds.includes(n.id) && n.type === 'action');
-                    for (const aNode of targetActionNodes) {
-                      await this.executeAction(organizationId, customer, conversationId, {
-                        type: aNode.data?.actionType || AutomationActionType.SEND_MESSAGE,
-                        payload: aNode.data || {},
-                      }, context);
-                    }
-                  }
-                }
-              }
-            }
-          } catch (flowErr) {
-            logger.warn('Error parsing rule flowData:', flowErr);
+            actionsToExecute = typeof rule.actions === 'string' ? JSON.parse(rule.actions) : (rule.actions || []);
+          } catch {
+            actionsToExecute = [];
           }
-        }
-
-        let actions: any[] = [];
-        try {
-          actions = typeof rule.actions === 'string' ? JSON.parse(rule.actions) : (rule.actions || []);
-        } catch {
-          actions = [];
         }
 
         let lastOutgoingResponse: any = null;
         let lastReplyText: string | undefined = undefined;
 
-        for (const action of actions) {
-          const res = await this.executeAction(organizationId, customer, conversationId, action, context);
+        for (const action of actionsToExecute) {
+          // Normalize action format
+          const formattedAction = {
+            type: action.type || AutomationActionType.SEND_MESSAGE,
+            payload: action.payload || action,
+          };
+
+          const res = await this.executeAction(organizationId, customer, conversationId, formattedAction, context);
           if (res) {
             lastOutgoingResponse = res;
-            if (action.type === AutomationActionType.SEND_MESSAGE && action.payload?.text) {
-              lastReplyText = action.payload.text;
+            if (formattedAction.type === AutomationActionType.SEND_MESSAGE && formattedAction.payload?.text) {
+              lastReplyText = formattedAction.payload.text;
             }
           }
         }
