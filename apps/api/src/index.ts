@@ -70,8 +70,8 @@ ensureDatabaseReady().catch((err) => logger.error('DB ready check failed:', err)
 
 // Start HTTP Server
 if (process.env.NODE_ENV !== 'test') {
-  server.listen(config.port, () => {
-    logger.info(`🚀 AutoMate by DK Backend listening on http://localhost:${config.port}`);
+  server.listen(config.port, '0.0.0.0', () => {
+    logger.info(`🚀 AutoMate by DK Backend listening on 0.0.0.0:${config.port}`);
     logger.info(`🌐 Frontend URL: ${config.frontendUrl}`);
     logger.info(`🤖 WhatsApp Mode: ${config.whatsapp.mock ? 'MOCK SIMULATION' : 'LIVE META CLOUD API (v21.0)'}`);
     logger.info(`🧠 AI Mode: ${config.ai.mock ? 'MOCK ENGINE' : 'OPENAI LIVE'}`);
