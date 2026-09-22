@@ -15,19 +15,10 @@ import { AnalyticsController } from '../controllers/analytics.controller.js';
 import { SettingsController } from '../controllers/settings.controller.js';
 import { OrganizationController } from '../controllers/organization.controller.js';
 import { SuperAdminController } from '../controllers/superadmin.controller.js';
+import { SubscriptionController } from '../controllers/subscription.controller.js';
 import { AiController } from '../controllers/ai.controller.js';
 import { authenticate, requireTenant, requireRole, requireSuperAdmin } from '../middlewares/auth.js';
 import { validateRequest } from '../middlewares/validate.js';
-import {
-  productSchema,
-  categorySchema,
-  leadSchema,
-  updateLeadStatusSchema,
-  sendWhatsAppMessageSchema,
-  businessProfileSchema,
-  automationRuleSchema,
-  campaignSchema,
-} from '@chatflow/shared';
 
 const router = Router();
 
@@ -52,6 +43,12 @@ router.get('/plans', SuperAdminController.listPlans);
 // Protected Tenant Routes (Require Authentication + Tenant Context)
 const tenantRouter = Router();
 tenantRouter.use(authenticate, requireTenant);
+
+// Subscription & Invoices
+tenantRouter.get('/subscription', SubscriptionController.getSubscription);
+tenantRouter.post('/subscription/renew', SubscriptionController.renewSubscription);
+tenantRouter.post('/subscription/upgrade', SubscriptionController.upgradePlan);
+tenantRouter.get('/subscription/invoices', SubscriptionController.listInvoices);
 
 // Products
 tenantRouter.get('/products', ProductController.list);
@@ -121,12 +118,17 @@ tenantRouter.post('/ai/test-faq', AiController.testFaq);
 // WhatsApp QR Code Session Routes
 tenantRouter.use('/whatsapp/qr', qrRoutes);
 
-router.use('/', tenantRouter);
-
-// Super Admin Routes
+// Super Admin Routes (Mounted before tenantRouter)
 const superAdminRouter = Router();
 superAdminRouter.use(authenticate, requireSuperAdmin);
 superAdminRouter.get('/stats', SuperAdminController.getPlatformStats);
+superAdminRouter.post('/organizations/:id/approve', SuperAdminController.approveOrganization);
+superAdminRouter.post('/organizations/:id/reject', SuperAdminController.rejectOrganization);
+superAdminRouter.put('/organizations/:id/subscription', SuperAdminController.updateTenantSubscription);
+superAdminRouter.get('/payments', SuperAdminController.listAllPayments);
 router.use('/super-admin', superAdminRouter);
+
+// Protected Tenant Routes
+router.use('/', tenantRouter);
 
 export default router;

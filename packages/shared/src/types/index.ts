@@ -88,12 +88,21 @@ export enum CampaignStatus {
   FAILED = 'FAILED',
 }
 
+// Organization Status
+export enum OrganizationStatus {
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  REJECTED = 'REJECTED',
+}
+
 // Subscriptions
 export enum SubscriptionPlanTier {
   FREE = 'FREE',
   STARTER = 'STARTER',
   GROWTH = 'GROWTH',
   PRO = 'PRO',
+  ENTERPRISE = 'ENTERPRISE',
 }
 
 export enum SubscriptionStatus {
@@ -102,6 +111,11 @@ export enum SubscriptionStatus {
   PAST_DUE = 'PAST_DUE',
   CANCELED = 'CANCELED',
   INCOMPLETE = 'INCOMPLETE',
+}
+
+export enum BillingCycle {
+  MONTHLY = 'MONTHLY',
+  YEARLY = 'YEARLY',
 }
 
 // WhatsApp Connection State

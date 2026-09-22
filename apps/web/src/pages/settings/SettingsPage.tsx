@@ -81,6 +81,66 @@ export const SettingsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Subscription & Billing State
+  const [subData, setSubData] = useState<any>(null);
+  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [upgradeTier, setUpgradeTier] = useState('PRO');
+  const [renewMethod, setRenewMethod] = useState<'UPI' | 'CARD'>('UPI');
+  const [renewCycle, setRenewCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [viewInvoice, setViewInvoice] = useState<any>(null);
+
+  const fetchSubscription = async () => {
+    try {
+      const res: any = await api.get('/subscription');
+      if (res.data) setSubData(res.data);
+    } catch (err) {
+      console.error('Failed to load subscription:', err);
+    }
+  };
+
+  const handleRenewSubscription = async () => {
+    setBillingLoading(true);
+    try {
+      await api.post('/subscription/renew', {
+        paymentMethod: renewMethod,
+        billingCycle: renewCycle,
+      });
+      setIsRenewModalOpen(false);
+      fetchSubscription();
+      alert('Subscription renewed successfully!');
+    } catch (err: any) {
+      alert(err.message || 'Renewal failed');
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  const handleUpgradeSubscription = async () => {
+    setBillingLoading(true);
+    try {
+      await api.post('/subscription/upgrade', {
+        newTier: upgradeTier,
+        billingCycle: renewCycle,
+        paymentMethod: renewMethod,
+      });
+      setIsUpgradeModalOpen(false);
+      fetchSubscription();
+      alert(`Upgraded to ${upgradeTier} plan successfully!`);
+    } catch (err: any) {
+      alert(err.message || 'Upgrade failed');
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'billing') {
+      fetchSubscription();
+    }
+  }, [activeTab]);
+
   useEffect(() => {
     if (settings) {
       setProfileForm({
@@ -914,35 +974,320 @@ export const SettingsPage: React.FC = () => {
 
       {/* Tab 5: Billing & Plans */}
       {activeTab === 'billing' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-6 max-w-3xl">
-          <div>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded uppercase">
-              Current Active Plan
-            </span>
-            <h3 className="text-xl font-black text-slate-900 mt-2">GROWTH Business Plan</h3>
-            <p className="text-xs text-slate-500 mt-1">Unlimited AI product searches, broadcast campaigns & 10 team seats.</p>
+        <div className="space-y-6 max-w-4xl">
+          {/* Active Plan Card */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                    Active Subscription
+                  </span>
+                  <span className="text-xs font-semibold text-slate-500">
+                    Cycle: {subData?.billingCycle || 'MONTHLY'}
+                  </span>
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 mt-1">
+                  {subData?.planTier || 'GROWTH'} Tier Plan
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Your subscription expires in <strong className="text-emerald-700">{subData?.daysRemaining ?? 30} days</strong>.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsRenewModalOpen(true)}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs transition-all"
+                >
+                  Renew Subscription
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsUpgradeModalOpen(true)}
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs transition-all"
+                >
+                  Change / Upgrade Plan
+                </button>
+              </div>
+            </div>
+
+            {/* Quota & Usage Progress Meters */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-100">
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <span className="text-slate-400 text-[10px] block font-bold uppercase">Products Catalog</span>
+                <span className="text-base font-black text-slate-900 mt-0.5 block">
+                  {subData?.usage?.products || 0} / {subData?.limits?.maxProducts || 500}
+                </span>
+                <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, ((subData?.usage?.products || 0) / (subData?.limits?.maxProducts || 500)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <span className="text-slate-400 text-[10px] block font-bold uppercase">Conversations</span>
+                <span className="text-base font-black text-slate-900 mt-0.5 block">
+                  {subData?.usage?.conversations || 0} / {subData?.limits?.maxConversations || 10000}
+                </span>
+                <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, ((subData?.usage?.conversations || 0) / (subData?.limits?.maxConversations || 10000)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <span className="text-slate-400 text-[10px] block font-bold uppercase">Automations</span>
+                <span className="text-base font-black text-slate-900 mt-0.5 block">
+                  {subData?.usage?.automations || 0} / {subData?.limits?.maxAutomations || 50}
+                </span>
+                <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, ((subData?.usage?.automations || 0) / (subData?.limits?.maxAutomations || 50)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <span className="text-slate-400 text-[10px] block font-bold uppercase">Team Members</span>
+                <span className="text-base font-black text-slate-900 mt-0.5 block">
+                  {teamMembers.length || 1} / {subData?.limits?.maxUsers || 10}
+                </span>
+                <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, ((teamMembers.length || 1) / (subData?.limits?.maxUsers || 10)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <span className="text-slate-400 text-[10px] block">Products Limit</span>
-              <span className="font-bold text-slate-800">500 items</span>
-            </div>
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <span className="text-slate-400 text-[10px] block">Monthly Chats</span>
-              <span className="font-bold text-slate-800">10,000</span>
-            </div>
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <span className="text-slate-400 text-[10px] block">AI Searches</span>
-              <span className="font-bold text-slate-800">25,000</span>
-            </div>
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <span className="text-slate-400 text-[10px] block">Team Members</span>
-              <span className="font-bold text-slate-800">10 Seats</span>
+          {/* Payment & Invoices History */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+            <h4 className="text-sm font-bold text-slate-900">Subscription Invoices & Receipts</h4>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <th className="py-2.5 px-3">Invoice #</th>
+                    <th className="py-2.5 px-3">Plan Tier</th>
+                    <th className="py-2.5 px-3">Amount</th>
+                    <th className="py-2.5 px-3">Method</th>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Receipt</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(subData?.recentPayments || []).map((pay: any) => (
+                    <tr key={pay.id} className="hover:bg-slate-50/60">
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-800 text-[11px]">{pay.invoiceNumber || pay.transactionId}</td>
+                      <td className="py-2.5 px-3 font-semibold text-slate-800">{pay.planTier || subData?.planTier}</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900">₹{pay.amount.toLocaleString()}</td>
+                      <td className="py-2.5 px-3 text-slate-600">{pay.paymentMethod}</td>
+                      <td className="py-2.5 px-3 text-slate-400">{new Date(pay.createdAt).toLocaleDateString()}</td>
+                      <td className="py-2.5 px-3">
+                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
+                          {pay.status}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setViewInvoice(pay)}
+                          className="text-emerald-700 hover:text-emerald-800 font-bold text-[11px] underline"
+                        >
+                          View Receipt
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
+
+          {/* Modal: Renew Subscription */}
+          {isRenewModalOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-200 space-y-4">
+                <h3 className="text-base font-bold text-slate-900">Renew Subscription</h3>
+                <p className="text-xs text-slate-500">
+                  Extend your <strong className="text-slate-900">{subData?.planTier || 'GROWTH'}</strong> plan.
+                </p>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1">Billing Cycle</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRenewCycle('MONTHLY')}
+                        className={`p-2.5 rounded-xl border font-bold ${
+                          renewCycle === 'MONTHLY' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200'
+                        }`}
+                      >
+                        1 Month (₹2,999)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRenewCycle('YEARLY')}
+                        className={`p-2.5 rounded-xl border font-bold ${
+                          renewCycle === 'YEARLY' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200'
+                        }`}
+                      >
+                        1 Year (Save 20%)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1">Payment Method</label>
+                    <select
+                      value={renewMethod}
+                      onChange={(e) => setRenewMethod(e.target.value as any)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold"
+                    >
+                      <option value="UPI">Instant UPI / QR Code</option>
+                      <option value="CARD">Credit / Debit Card</option>
+                      <option value="NETBANKING">Net Banking</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsRenewModalOpen(false)}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRenewSubscription}
+                    disabled={billingLoading}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2 rounded-xl text-xs shadow-xs"
+                  >
+                    {billingLoading ? 'Processing...' : 'Confirm & Pay'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: Upgrade Plan */}
+          {isUpgradeModalOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 border border-slate-200 space-y-4">
+                <h3 className="text-base font-bold text-slate-900">Upgrade Subscription Plan</h3>
+                <p className="text-xs text-slate-500">Select higher limits for products, AI searches, and staff seats.</p>
+
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  {[
+                    { tier: 'STARTER', name: 'Starter Pro', price: '₹1,499/mo' },
+                    { tier: 'GROWTH', name: 'Growth Business', price: '₹2,999/mo' },
+                    { tier: 'PRO', name: 'Enterprise Scale', price: '₹5,999/mo' },
+                  ].map((p) => (
+                    <button
+                      key={p.tier}
+                      type="button"
+                      onClick={() => setUpgradeTier(p.tier)}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        upgradeTier === p.tier
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <p className="font-bold">{p.name}</p>
+                      <p className="text-[11px] text-emerald-700 font-bold mt-1">{p.price}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsUpgradeModalOpen(false)}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUpgradeSubscription}
+                    disabled={billingLoading}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2 rounded-xl text-xs shadow-xs"
+                  >
+                    {billingLoading ? 'Upgrading...' : `Upgrade to ${upgradeTier}`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: View Receipt / Invoice */}
+          {viewInvoice && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-200 space-y-4 text-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">Tax Invoice / Receipt</h3>
+                    <p className="text-[11px] text-slate-400 font-mono">{viewInvoice.invoiceNumber || viewInvoice.transactionId}</p>
+                  </div>
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">PAID</span>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Plan Tier:</span>
+                    <span className="font-bold text-slate-900">{viewInvoice.planTier || subData?.planTier}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Amount Paid:</span>
+                    <span className="font-bold text-emerald-700">₹{viewInvoice.amount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Payment Mode:</span>
+                    <span className="font-semibold text-slate-900">{viewInvoice.paymentMethod}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Date &amp; Time:</span>
+                    <span className="text-slate-700">{new Date(viewInvoice.createdAt).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setViewInvoice(null)}
+                    className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 };
+

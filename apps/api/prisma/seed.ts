@@ -814,11 +814,81 @@ async function main() {
     ],
   });
 
+  // 12. Create StyleHub Subscription Payment
+  await prisma.payment.create({
+    data: {
+      organizationId: org.id,
+      amount: 2999,
+      currency: 'INR',
+      status: 'COMPLETED',
+      paymentMethod: 'UPI',
+      planTier: 'GROWTH',
+      invoiceNumber: 'INV-202501',
+      transactionId: 'TXN-UPI-9928172948',
+    },
+  });
+
+  // 13. Create a Pending Approval Business (For Super Admin Verification flow demo)
+  const pendingOwner = await prisma.user.create({
+    data: {
+      email: 'pending@luxurydental.com',
+      name: 'Dr. Sameer Kapoor',
+      phone: '+919811122233',
+      role: 'BUSINESS_OWNER',
+      password: passwordHash,
+      isVerified: true,
+      avatarUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+    },
+  });
+
+  const pendingOrg = await prisma.organization.create({
+    data: {
+      name: 'Luxury Smile Dental Clinic',
+      slug: 'luxury-smile-dental',
+      category: 'Healthcare & Clinic',
+      status: 'PENDING_APPROVAL',
+      isVerified: false,
+      memberships: {
+        create: [
+          { userId: pendingOwner.id, role: 'BUSINESS_OWNER' },
+        ],
+      },
+      settings: {
+        create: {
+          currency: 'INR',
+          welcomeMessage: '👋 Welcome to Luxury Smile Dental Clinic! Reply 1 for Dental Implants, 2 for Root Canal, 3 to Book Consultation.',
+          aiAutoReplyEnabled: true,
+        },
+      },
+      subscription: {
+        create: {
+          planTier: 'PRO',
+          status: 'ACTIVE',
+          billingCycle: 'MONTHLY',
+          paymentMethod: 'CARD',
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      },
+      payments: {
+        create: {
+          amount: 5999,
+          currency: 'INR',
+          status: 'COMPLETED',
+          paymentMethod: 'CARD',
+          planTier: 'PRO',
+          invoiceNumber: 'INV-202502',
+          transactionId: 'TXN-CRD-8819203912',
+        },
+      },
+    },
+  });
+
   console.log('✅ Seed finished successfully!');
   console.log('---------------------------------------------------------');
   console.log('👑 Super Admin: admin@chatflow.ai  | Password: Admin@123456');
-  console.log('🏪 StyleHub Owner: owner@stylehub.com | Password: Password@123');
-  console.log('👔 StyleHub Staff: staff@stylehub.com | Password: Password@123');
+  console.log('🏪 Active Business: owner@stylehub.com | Password: Password@123 (Growth Plan)');
+  console.log('⏳ Pending Verification Business: pending@luxurydental.com | Password: Password@123 (Pro Plan)');
   console.log('---------------------------------------------------------');
 }
 

@@ -9,9 +9,13 @@ interface AuthContextType {
   currentOrganization: Organization | null;
   isLoading: boolean;
   login: (credentials: { email: string; password: string }) => Promise<void>;
+  loginWithGoogle: (googleData: any) => Promise<void>;
+  sendOtp: (data: { email?: string; phone?: string; purpose?: string }) => Promise<any>;
+  verifyOtp: (data: { email?: string; phone?: string; otp: string }) => Promise<any>;
   register: (data: any) => Promise<void>;
   logout: () => void;
   switchOrganization: (orgId: string) => void;
+  refreshUserData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -83,6 +87,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithGoogle = async (googleData: any) => {
+    const res: any = await api.post('/auth/google', googleData);
+    if (res.data) {
+      localStorage.setItem('chatflow_token', res.data.accessToken);
+      localStorage.setItem('chatflow_refresh_token', res.data.refreshToken);
+
+      setUser(res.data.user);
+      setOrganizations(res.data.organizations || []);
+
+      const initialOrg = res.data.currentOrganization || res.data.organizations?.[0] || res.data.organization || null;
+      if (initialOrg) {
+        setCurrentOrganization(initialOrg);
+        localStorage.setItem('chatflow_org_id', initialOrg.id);
+        socketService.connect(res.data.accessToken);
+        socketService.joinOrg(initialOrg.id);
+      }
+    }
+  };
+
+  const sendOtp = async (data: { email?: string; phone?: string; purpose?: string }) => {
+    const res: any = await api.post('/auth/otp/send', data);
+    return res.data;
+  };
+
+  const verifyOtp = async (data: { email?: string; phone?: string; otp: string }) => {
+    const res: any = await api.post('/auth/otp/verify', data);
+    if (res.data?.accessToken) {
+      localStorage.setItem('chatflow_token', res.data.accessToken);
+      localStorage.setItem('chatflow_refresh_token', res.data.refreshToken);
+
+      setUser(res.data.user);
+      setOrganizations(res.data.organizations || []);
+
+      const initialOrg = res.data.currentOrganization || res.data.organizations?.[0] || null;
+      if (initialOrg) {
+        setCurrentOrganization(initialOrg);
+        localStorage.setItem('chatflow_org_id', initialOrg.id);
+        socketService.connect(res.data.accessToken);
+        socketService.joinOrg(initialOrg.id);
+      }
+    }
+    return res.data;
+  };
+
   const register = async (data: any) => {
     const res: any = await api.post('/auth/register', data);
     if (res.data) {
@@ -120,6 +168,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshUserData = async () => {
+    await fetchCurrentUser();
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -128,9 +180,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentOrganization,
         isLoading,
         login,
+        loginWithGoogle,
+        sendOtp,
+        verifyOtp,
         register,
         logout,
         switchOrganization,
+        refreshUserData,
       }}
     >
       {children}

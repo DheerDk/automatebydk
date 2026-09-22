@@ -18,6 +18,8 @@ export interface User {
   phone?: string | null;
   role: string;
   avatarUrl?: string | null;
+  isVerified?: boolean;
+  authProvider?: string;
 }
 
 export interface Organization {
@@ -25,6 +27,11 @@ export interface Organization {
   name: string;
   slug: string;
   logoUrl?: string | null;
+  category?: string | null;
+  status?: string;
+  isVerified?: boolean;
+  approvalNote?: string | null;
+  approvedAt?: string | null;
   role?: string;
   settings?: BusinessSettings;
   whatsappAccount?: WhatsAppAccountSummary | null;
@@ -203,8 +210,24 @@ export interface Subscription {
   id: string;
   planTier: string;
   status: string;
+  billingCycle?: string;
+  autoRenew?: boolean;
+  paymentMethod?: string;
   currentPeriodStart: string;
   currentPeriodEnd: string;
+}
+
+export interface Payment {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  paymentMethod: string;
+  transactionId: string;
+  planTier?: string;
+  invoiceNumber?: string;
+  createdAt: string;
+  organization?: { id: string; name: string; slug: string };
 }
 
 export interface Plan {

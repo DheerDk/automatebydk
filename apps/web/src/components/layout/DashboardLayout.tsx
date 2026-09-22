@@ -6,7 +6,7 @@ import { Navbar } from './Navbar';
 import { WhatsAppSimulatorModal } from '../simulator/WhatsAppSimulatorModal';
 
 export const DashboardLayout: React.FC = () => {
-  const { user, isLoading } = useAuth();
+  const { user, currentOrganization, isLoading } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
 
@@ -37,6 +37,21 @@ export const DashboardLayout: React.FC = () => {
           onMenuToggle={() => setIsSidebarOpen(true)}
           onOpenSimulator={() => setIsSimulatorOpen(true)}
         />
+
+        {/* Verification Status Banner if applicable */}
+        {currentOrganization?.status === 'PENDING_APPROVAL' && (
+          <div className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
+              <span>
+                Account Verification in Progress: Your business workspace is provisioned. Live WhatsApp automation is undergoing Super Admin review.
+              </span>
+            </div>
+            <span className="text-[10px] bg-slate-950 text-amber-400 px-2 py-0.5 rounded font-black">
+              Under Review
+            </span>
+          </div>
+        )}
 
         {/* Dynamic Page Outlet */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50">

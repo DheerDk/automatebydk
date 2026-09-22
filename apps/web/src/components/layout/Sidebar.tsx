@@ -25,7 +25,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-  const { user } = useAuth();
+  const { user, currentOrganization } = useAuth();
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const navItems = [
@@ -127,13 +127,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
         {/* Footer Plan badge */}
         <div className="p-4 border-t border-slate-800 bg-slate-950/40">
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span className="text-slate-400 font-medium">Active Plan</span>
-            <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-              GROWTH
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400">Meta API v21.0 Connected</p>
+          <NavLink
+            to="/dashboard/settings?tab=billing"
+            onClick={() => onClose()}
+            className="block hover:opacity-90 transition-opacity"
+          >
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-slate-400 font-medium">Subscription</span>
+              <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                {currentOrganization?.subscription?.planTier || 'GROWTH'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 flex items-center justify-between">
+              <span>Status: {currentOrganization?.status || 'ACTIVE'}</span>
+              <span className="text-emerald-400 font-semibold underline text-[10px]">Manage</span>
+            </p>
+          </NavLink>
         </div>
       </aside>
     </>

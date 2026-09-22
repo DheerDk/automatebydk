@@ -17,6 +17,11 @@ model User {
   phone           String?
   role            String       @default("BUSINESS_OWNER")
   avatarUrl       String?
+  isVerified      Boolean      @default(false)
+  authProvider    String       @default("LOCAL") // LOCAL, GOOGLE, OTP
+  otpCode         String?
+  otpExpires      DateTime?
+  googleId        String?
   resetToken      String?
   resetExpires    DateTime?
   createdAt       DateTime     @default(now())
@@ -35,6 +40,11 @@ model Organization {
   name              String
   slug              String             @unique
   logoUrl           String?
+  category          String?            @default("Retail & E-commerce")
+  status            String             @default("ACTIVE") // PENDING_APPROVAL, ACTIVE, SUSPENDED, REJECTED
+  isVerified        Boolean            @default(false)
+  approvalNote      String?
+  approvedAt        DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -385,6 +395,9 @@ model Subscription {
   organizationId      String               @unique
   planTier            String               @default("FREE")
   status              String               @default("ACTIVE")
+  billingCycle        String               @default("MONTHLY") // MONTHLY, YEARLY
+  autoRenew           Boolean              @default(true)
+  paymentMethod       String?              @default("CARD")
   currentPeriodStart  DateTime             @default(now())
   currentPeriodEnd    DateTime
   cancelAtPeriodEnd   Boolean              @default(false)
@@ -421,6 +434,8 @@ model Payment {
   status          String       @default("COMPLETED")
   paymentMethod   String       @default("CARD")
   transactionId   String       @unique
+  planTier        String?      @default("STARTER")
+  invoiceNumber   String?
   createdAt       DateTime     @default(now())
 
   organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
