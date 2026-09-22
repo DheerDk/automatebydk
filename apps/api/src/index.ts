@@ -10,6 +10,7 @@ import { errorHandler } from './middlewares/errorHandler.js';
 import { SocketServer } from './sockets/index.js';
 import { JobScheduler } from './jobs/scheduler.js';
 import { BaileysService } from './services/baileys.service.js';
+import { ensureDatabaseReady } from './utils/dbInit.js';
 import apiRouter from './routes/index.js';
 
 const app = express();
@@ -61,10 +62,11 @@ app.use('/', apiRouter);
 // Central Error Handler
 app.use(errorHandler);
 
-// Initialize Socket.IO & Schedulers
+// Initialize Socket.IO, Schedulers & Database Bootstrap
 SocketServer.initialize(server);
 JobScheduler.start();
 BaileysService.initAllSavedSessions();
+ensureDatabaseReady().catch((err) => logger.error('DB ready check failed:', err));
 
 // Start HTTP Server
 if (process.env.NODE_ENV !== 'test') {

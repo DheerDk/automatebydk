@@ -17,7 +17,7 @@
     "build:shared": "npm run build --workspace=@chatflow/shared",
     "build:api": "npm run build --workspace=@chatflow/api",
     "build:web": "npm run build --workspace=@chatflow/web",
-    "build:prod": "npm install --include=dev && npm run build:shared && npm run db:generate && npm run build:api",
+    "build:prod": "npm install --include=dev && npm run build:shared && npm run db:generate && npm run db:push && npm run build:api",
     "test": "npm run test --workspaces --if-present",
     "db:generate": "npm run db:generate --workspace=@chatflow/api",
     "db:push": "npm run db:push --workspace=@chatflow/api",
