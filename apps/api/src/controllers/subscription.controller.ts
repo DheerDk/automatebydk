@@ -155,7 +155,7 @@ export class SubscriptionController {
         });
 
         return { updatedSub, payment };
-      });
+      }, { maxWait: 20000, timeout: 45000 });
 
       await AuditService.log({
         organizationId: orgId,
@@ -242,7 +242,7 @@ export class SubscriptionController {
         });
 
         return { updatedSub, payment };
-      });
+      }, { maxWait: 20000, timeout: 45000 });
 
       await AuditService.log({
         organizationId: orgId,

@@ -339,7 +339,7 @@ export class ProductionAuthService {
       });
 
       return { user, organization };
-    });
+    }, { maxWait: 20000, timeout: 45000 });
 
     // 4. Generate Email Verification Token
     const rawVerifyToken = crypto.randomBytes(32).toString('hex');
@@ -758,7 +758,7 @@ export class ProductionAuthService {
         });
 
         return { user: newUser, organization: newOrg };
-      });
+      }, { maxWait: 20000, timeout: 45000 });
 
       user = {
         ...created.user,
@@ -1116,7 +1116,7 @@ export class ProductionAuthService {
         });
 
         return { user: newUser, organization: newOrg };
-      });
+      }, { maxWait: 20000, timeout: 45000 });
 
       user = {
         ...created.user,
