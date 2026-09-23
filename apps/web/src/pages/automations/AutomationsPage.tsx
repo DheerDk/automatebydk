@@ -804,6 +804,33 @@ export const AutomationsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* 24/7 Cloud Background Execution Guarantee Banner */}
+      <div className="bg-gradient-to-r from-emerald-950/60 via-slate-900 to-emerald-950/60 border border-emerald-500/30 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg backdrop-blur-md">
+        <div className="flex items-start gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5 md:mt-0">
+            <span className="relative flex h-3.5 w-3.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
+            </span>
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm sm:text-base font-bold text-white">24/7 Cloud Automation Engine: ACTIVE</h3>
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full">
+                Runs Non-Stop 24/7
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+              Your active automations and WhatsApp chatbot run permanently in the cloud. <strong className="text-emerald-300">Logging out of your account or closing your device will NEVER stop your automations or disconnect WhatsApp.</strong> Flows only stop when you explicitly toggle them OFF or delete them from this dashboard.
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-slate-900/90 border border-slate-700/60 rounded-xl text-[11px] font-semibold text-slate-300">
+          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          Always-On Cloud Service
+        </div>
+      </div>
+
       {/* Tabs Navigation */}
       <div className="flex border-b border-slate-800 gap-6 overflow-x-auto pb-1">
         <button

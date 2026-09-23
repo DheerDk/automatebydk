@@ -417,8 +417,42 @@ export class BaileysService {
     return false;
   }
 
+  private static watchdogInterval: NodeJS.Timeout | null = null;
+
   /**
-   * Auto-resume all saved Baileys sessions on server boot
+   * 24/7 Background Watchdog: Continuously monitors all saved WhatsApp sessions
+   * and auto-reconnects any dropped sessions in the cloud without user intervention.
+   */
+  public static startWatchdog() {
+    if (this.watchdogInterval) return;
+
+    logger.info('🛡️ [Baileys] Started 24/7 persistent WhatsApp connection watchdog.');
+    this.watchdogInterval = setInterval(async () => {
+      try {
+        if (!fs.existsSync(this.sessionsBaseDir)) return;
+        const orgDirs = fs.readdirSync(this.sessionsBaseDir);
+        for (const orgId of orgDirs) {
+          const credsPath = path.join(this.sessionsBaseDir, orgId, 'creds.json');
+          if (fs.existsSync(credsPath)) {
+            const currentSession = this.sessions.get(orgId);
+            const isAlive = currentSession && currentSession.sock && (currentSession.status === 'CONNECTED' || currentSession.status === 'CONNECTING');
+            
+            if (!isAlive) {
+              logger.info(`[Baileys Watchdog] 🔄 Auto-reconnecting WhatsApp session for organization: ${orgId}`);
+              await this.initSession(orgId).catch((err) => {
+                logger.warn(`[Baileys Watchdog] Reconnect attempt failed for org ${orgId}:`, err?.message || err);
+              });
+            }
+          }
+        }
+      } catch (err) {
+        logger.error('[Baileys Watchdog] Error in connection loop:', err);
+      }
+    }, 60000); // Check every 60 seconds
+  }
+
+  /**
+   * Auto-resume all saved Baileys sessions on server boot and launch 24/7 watchdog
    */
   public static async initAllSavedSessions() {
     if (!fs.existsSync(this.sessionsBaseDir)) return;
@@ -433,6 +467,8 @@ export class BaileysService {
       }
     } catch (err) {
       logger.error('[Baileys] Error during auto-resuming sessions:', err);
+    } finally {
+      this.startWatchdog();
     }
   }
 }

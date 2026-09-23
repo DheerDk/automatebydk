@@ -630,7 +630,11 @@ export const SettingsPage: React.FC = () => {
                         Your WhatsApp number <span className="font-bold font-mono">{qrPhone || whatsappAccount?.displayPhoneNumber}</span> is linked. All incoming customer messages will receive AI auto-replies and show up in your inbox!
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 pt-2">
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                      <span className="text-[11px] bg-white/80 border border-emerald-300 text-emerald-800 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        24/7 Cloud Active (Runs on Logout)
+                      </span>
                       <span className="text-[11px] bg-white/80 border border-emerald-300 text-emerald-800 font-semibold px-3 py-1 rounded-full flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                         AI Catalog Search Active
@@ -640,6 +644,9 @@ export const SettingsPage: React.FC = () => {
                         Lead Capture Active
                       </span>
                     </div>
+                    <p className="text-[11px] text-emerald-850 bg-emerald-100/70 border border-emerald-200 rounded-xl px-3.5 py-2 mt-2 max-w-lg text-left">
+                      🛡️ <strong>24/7 Cloud Persistence:</strong> Your WhatsApp connection runs on cloud servers around the clock. Logging out of your dashboard will <strong>NOT</strong> disconnect WhatsApp or stop your automations. To disconnect completely, use the <em>"Disconnect Number"</em> button above.
+                    </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center pt-2">

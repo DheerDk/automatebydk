@@ -189,6 +189,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuToggle, onOpenSimulator })
                 <LogOut className="w-4 h-4" />
                 <span>Log out</span>
               </button>
+              <div className="px-4 py-1.5 mt-1 border-t border-slate-100 bg-emerald-50/50 rounded-b-xl">
+                <p className="text-[10px] text-emerald-800 font-medium flex items-center gap-1.5 leading-tight">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                  Automations &amp; WhatsApp stay active 24/7 after logout
+                </p>
+              </div>
             </div>
           )}
         </div>
