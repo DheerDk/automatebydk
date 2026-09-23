@@ -1,16 +1,43 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../utils/prisma.js';
 import { AppError } from '../middlewares/errorHandler.js';
+import { AutomationService } from '../services/automation.service.js';
 
 export class AutomationController {
   public static async list(req: Request, res: Response, next: NextFunction) {
     try {
       const organizationId = req.organizationId!;
 
-      const automations = await prisma.automationRule.findMany({
+      let automations = await prisma.automationRule.findMany({
         where: { organizationId },
         orderBy: { createdAt: 'desc' },
       });
+
+      if (!automations || automations.length === 0) {
+        const defaultFlow = AutomationService.getDefaultStarterFlowData();
+        const created = await prisma.automationRule.create({
+          data: {
+            organizationId,
+            name: 'Retail & E-Commerce Store Workflow',
+            description: 'Interactive branching automation with catalog, VIP coupon, location pin, and manager handoff.',
+            trigger: 'GREETING',
+            conditions: JSON.stringify({ keyword: defaultFlow.triggerKeyword }),
+            actions: JSON.stringify([
+              {
+                type: 'SEND_MESSAGE',
+                payload: {
+                  text: defaultFlow.welcomeText,
+                  mediaUrl: defaultFlow.welcomeMediaUrl,
+                  buttons: defaultFlow.welcomeButtons,
+                },
+              },
+            ]),
+            flowData: JSON.stringify(defaultFlow),
+            isActive: true,
+          },
+        });
+        automations = [created];
+      }
 
       const formatted = automations.map((a) => {
         let parsedFlowData = null;

@@ -15,6 +15,111 @@ export interface AutomationExecutionContext {
 
 export class AutomationService {
   /**
+   * Default starter workflow template for automated self-seeding
+   */
+  public static getDefaultStarterFlowData() {
+    return {
+      triggerKeyword: 'hi, hello, menu, start, store, 1, 2, 3, 4, 5, 6',
+      triggerType: 'KEYWORD_MATCH',
+      welcomeText: `👋 *Welcome to our Store!*\n\nHow can we help you today? Reply with a number or tap an option:\n\n1️⃣ 🛍️ *Browse Trending Products*\n2️⃣ 🔍 *Search Specific Item*\n3️⃣ 🏷️ *Exclusive VIP Discount Code*\n4️⃣ 📍 *Store Location & Timings*\n5️⃣ 🌐 *Visit Official Online Website*\n6️⃣ 🧑‍💼 *Talk to Store Manager*`,
+      welcomeMediaUrl: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&auto=format&fit=crop&q=80',
+      welcomeButtons: [
+        { id: '1', title: '🛍️ Browse Products' },
+        { id: '3', title: '🏷️ VIP Coupon' },
+        { id: '6', title: '🧑‍💼 Store Manager' },
+      ],
+      branches: [
+        {
+          id: 'branch_1',
+          value: '1',
+          conditionType: 'NUMBER_CHOICE',
+          title: 'Option 1: Browse Products',
+          actions: [
+            {
+              type: 'SEND_CATALOG',
+              text: '🛍️ Here are our top featured products today! Reply with any product name to place your order.',
+              leadStatus: 'INTERESTED',
+              tags: ['Browsed-Catalog'],
+            },
+          ],
+        },
+        {
+          id: 'branch_2',
+          value: '2',
+          conditionType: 'NUMBER_CHOICE',
+          title: 'Option 2: Search Product',
+          actions: [
+            {
+              type: 'SEND_MESSAGE',
+              text: '🔍 *Product Search:* Please type the item name or category (e.g. "T-Shirt", "Wireless Headphones", "Sneakers") and our AI catalog will find it instantly!',
+              leadStatus: 'INTERESTED',
+            },
+          ],
+        },
+        {
+          id: 'branch_3',
+          value: '3',
+          conditionType: 'NUMBER_CHOICE',
+          title: 'Option 3: VIP Discount Promo',
+          actions: [
+            {
+              type: 'SEND_MESSAGE',
+              mediaUrl: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&auto=format&fit=crop&q=80',
+              text: '🎉 *Special VIP Discount Activated!*\n\nUse Promo Code: *VIP2026* to get Flat 20% OFF on all purchases today.\n\nShop online now: https://automatebydk.pages.dev',
+              leadStatus: 'CONTACTED',
+              tags: ['VIP-Discount-Claimed'],
+            },
+          ],
+        },
+        {
+          id: 'branch_4',
+          value: '4',
+          conditionType: 'NUMBER_CHOICE',
+          title: 'Option 4: Store Location & Timings',
+          actions: [
+            {
+              type: 'SEND_LOCATION',
+              address: 'Main Commercial Plaza, MG Road, Metro Pillar 45',
+              text: '📍 *Visit Our Store:*\n🏢 Main Commercial Plaza, MG Road\n⏰ Hours: Mon-Sat (10:00 AM - 09:30 PM)\n🗺️ Maps: https://maps.google.com',
+            },
+          ],
+        },
+        {
+          id: 'branch_5',
+          value: '5',
+          conditionType: 'NUMBER_CHOICE',
+          title: 'Option 5: Online Website',
+          actions: [
+            {
+              type: 'SEND_WEBSITE',
+              url: 'https://automatebydk.pages.dev',
+              text: '🌐 *Official Store Website:*\n🔗 https://automatebydk.pages.dev\n\n✨ Browse our full range with live inventory & secure Razorpay payments!',
+            },
+          ],
+        },
+        {
+          id: 'branch_6',
+          value: '6',
+          conditionType: 'NUMBER_CHOICE',
+          title: 'Option 6: Human Support',
+          actions: [
+            {
+              type: 'HUMAN_HANDOFF',
+              text: '🧑‍💼 A store manager has been notified on WhatsApp and will assist you directly within 2 minutes!',
+              leadStatus: 'FOLLOW_UP',
+              tags: ['Human-Assistance-Requested'],
+            },
+          ],
+        },
+      ],
+      defaultAction: {
+        type: 'SEND_MESSAGE',
+        text: '✨ Feel free to ask anything about our store, delivery policies, or products!',
+      },
+    };
+  }
+
+  /**
    * Process all active automation rules matching the trigger for the tenant
    */
   public static async processRules(context: AutomationExecutionContext): Promise<{
@@ -32,15 +137,39 @@ export class AutomationService {
         triggerList.push(AutomationTrigger.KEYWORD_MATCH, AutomationTrigger.GREETING);
       }
 
-      const rules = await prisma.automationRule.findMany({
+      let rules = await prisma.automationRule.findMany({
         where: {
           organizationId,
-          trigger: { in: triggerList },
           isActive: true,
         },
       });
 
-      if (!rules || rules.length === 0) return { executed: false };
+      // Auto-seed default Visual Workflow Studio Rule if no rules exist for this tenant
+      if (!rules || rules.length === 0) {
+        const defaultFlow = this.getDefaultStarterFlowData();
+        const createdRule = await prisma.automationRule.create({
+          data: {
+            organizationId,
+            name: 'Retail & E-Commerce Store Workflow',
+            description: 'Interactive branching automation with catalog, VIP coupon, location pin, and manager handoff.',
+            trigger: 'GREETING',
+            conditions: JSON.stringify({ keyword: defaultFlow.triggerKeyword }),
+            actions: JSON.stringify([
+              {
+                type: 'SEND_MESSAGE',
+                payload: {
+                  text: defaultFlow.welcomeText,
+                  mediaUrl: defaultFlow.welcomeMediaUrl,
+                  buttons: defaultFlow.welcomeButtons,
+                },
+              },
+            ]),
+            flowData: JSON.stringify(defaultFlow),
+            isActive: true,
+          },
+        });
+        rules = [createdRule];
+      }
 
       const customer = await prisma.customer.findUnique({
         where: { id: customerId },
@@ -48,7 +177,16 @@ export class AutomationService {
 
       if (!customer) return { executed: false };
 
-      const normalizedMsg = (messageText || '').toLowerCase().trim();
+      const rawMsg = (messageText || '').trim();
+      const normalizedMsg = rawMsg.toLowerCase().replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim();
+      const cleanDigits = rawMsg.replace(/\D/g, '');
+      const words = normalizedMsg.split(/[\s,.;:!?#*]+/).filter(Boolean);
+
+      const GREETING_WORDS = [
+        'hi', 'hello', 'hey', 'start', 'menu', 'namaste', 'help', 'info',
+        'hlo', 'hii', 'hiii', 'helo', 'restart', 'home', 'store', 'options',
+        'good morning', 'good afternoon', 'good evening',
+      ];
 
       for (const rule of rules) {
         let conditions: any = {};
@@ -58,7 +196,8 @@ export class AutomationService {
           conditions = {};
         }
 
-        let matches = false;
+        let isBranchMatched = false;
+        let isGreetingTriggerMatched = false;
         let matchedBranchActions: any[] | null = null;
         let defaultFlowAction: any = null;
 
@@ -74,85 +213,69 @@ export class AutomationService {
           }
         }
 
-        // 1. Check if matching any specific branch inside flowData
+        if (parsedFlowData && parsedFlowData.defaultAction) {
+          defaultFlowAction = parsedFlowData.defaultAction;
+        }
+
+        // 1. Check if matching any specific branch inside flowData (Number 1-6 or branch keywords)
         if (parsedFlowData && parsedFlowData.branches && Array.isArray(parsedFlowData.branches)) {
           for (const branch of parsedFlowData.branches) {
             const bVal = String(branch.value || '').trim().toLowerCase();
             const bTitle = String(branch.title || '').trim().toLowerCase();
             const bId = String(branch.id || '').trim().toLowerCase();
 
-            // Check condition types
-            if (branch.conditionType === 'NUMBER_CHOICE' || branch.conditionType === 'EQUALS') {
-              if (
-                normalizedMsg === bVal ||
-                normalizedMsg === `option ${bVal}` ||
-                normalizedMsg === `${bVal}.` ||
-                normalizedMsg === `#${bVal}` ||
-                normalizedMsg === bTitle ||
-                normalizedMsg === bId ||
-                normalizedMsg.includes(`choice_${bVal}`)
-              ) {
-                matches = true;
-                matchedBranchActions = branch.actions || [];
-                break;
-              }
-            } else if (branch.conditionType === 'CONTAINS') {
-              if (bVal && (normalizedMsg.includes(bVal) || normalizedMsg.includes(bTitle))) {
-                matches = true;
-                matchedBranchActions = branch.actions || [];
-                break;
-              }
+            // Match choice numbers (e.g. "1", "option 1", "choice 1", "#1", "1.")
+            if (cleanDigits && (cleanDigits === bVal || bVal.includes(cleanDigits))) {
+              isBranchMatched = true;
+              matchedBranchActions = branch.actions || [];
+              break;
             }
-          }
 
-          if (parsedFlowData.defaultAction) {
-            defaultFlowAction = parsedFlowData.defaultAction;
-          }
-        }
-
-        // 2. If not matched to a specific branch, check main trigger keywords
-        if (!matches) {
-          if (rule.trigger === AutomationTrigger.GREETING) {
-            const greetingKeywords = ['hi', 'hello', 'hey', 'start', 'menu', 'namaste', 'help', 'info'];
-            if (conditions.keyword) {
-              const extra = String(conditions.keyword).split(',').map((k) => k.trim().toLowerCase());
-              greetingKeywords.push(...extra);
-            }
-            if (greetingKeywords.some((kw) => normalizedMsg === kw || normalizedMsg.startsWith(kw))) {
-              matches = true;
-            }
-          } else if (rule.trigger === AutomationTrigger.KEYWORD_MATCH || trigger === AutomationTrigger.KEYWORD_MATCH) {
-            if (conditions.keyword) {
-              const keywords = String(conditions.keyword)
-                .split(',')
-                .map((k) => k.trim().toLowerCase())
-                .filter(Boolean);
-
-              for (const kw of keywords) {
-                if (normalizedMsg === kw || normalizedMsg.includes(kw)) {
-                  matches = true;
-                  break;
-                }
-              }
-            }
-          } else if (rule.trigger === AutomationTrigger.MESSAGE_RECEIVED) {
-            if (conditions.keyword) {
-              const keywords = String(conditions.keyword)
-                .split(',')
-                .map((k) => k.trim().toLowerCase())
-                .filter(Boolean);
-              if (keywords.length > 0) {
-                matches = keywords.some((kw) => normalizedMsg === kw || normalizedMsg.includes(kw));
-              } else {
-                matches = true;
-              }
-            } else {
-              matches = true;
+            // Match branch value or title
+            if (
+              normalizedMsg === bVal ||
+              words.includes(bVal) ||
+              normalizedMsg.includes(bTitle) ||
+              (bTitle && words.some((w) => bTitle.includes(w) && w.length >= 4)) ||
+              normalizedMsg === bId
+            ) {
+              isBranchMatched = true;
+              matchedBranchActions = branch.actions || [];
+              break;
             }
           }
         }
 
-        if (!matches) continue;
+        // 2. If not a specific branch, check if it matches the Main Greeting / Trigger Keywords
+        if (!isBranchMatched) {
+          const userKeywords: string[] = [];
+          if (conditions.keyword) {
+            const extra = String(conditions.keyword).split(',').map((k) => k.trim().toLowerCase()).filter(Boolean);
+            userKeywords.push(...extra);
+          }
+          if (parsedFlowData?.triggerKeyword) {
+            const extra = String(parsedFlowData.triggerKeyword).split(',').map((k) => k.trim().toLowerCase()).filter(Boolean);
+            userKeywords.push(...extra);
+          }
+
+          const allTriggers = Array.from(new Set([...GREETING_WORDS, ...userKeywords]));
+
+          // Exact match or contains greeting word
+          if (
+            allTriggers.includes(normalizedMsg) ||
+            words.some((w) => allTriggers.includes(w)) ||
+            allTriggers.some((kw) => normalizedMsg === kw || normalizedMsg.startsWith(`${kw} `) || normalizedMsg.endsWith(` ${kw}`))
+          ) {
+            isGreetingTriggerMatched = true;
+          } else if (rule.trigger === AutomationTrigger.MESSAGE_RECEIVED && userKeywords.length === 0) {
+            // General catch-all message received
+            isGreetingTriggerMatched = true;
+          }
+        }
+
+        if (!isBranchMatched && !isGreetingTriggerMatched) {
+          continue;
+        }
 
         await prisma.automationRule.update({
           where: { id: rule.id },
@@ -161,26 +284,39 @@ export class AutomationService {
 
         let actionsToExecute: any[] = [];
 
-        if (matchedBranchActions && matchedBranchActions.length > 0) {
+        if (isBranchMatched && matchedBranchActions && matchedBranchActions.length > 0) {
+          // User picked a specific branch option (e.g. 1. Catalog, 3. Coupon, 6. Manager)
           actionsToExecute = matchedBranchActions;
+        } else if (isGreetingTriggerMatched) {
+          // User sent greeting (e.g. "hi", "hello", "menu", "start") -> SEND WELCOME FLOW
+          if (parsedFlowData?.welcomeText) {
+            actionsToExecute = [
+              {
+                type: AutomationActionType.SEND_MESSAGE,
+                payload: {
+                  text: parsedFlowData.welcomeText,
+                  mediaUrl: parsedFlowData.welcomeMediaUrl,
+                  buttons: parsedFlowData.welcomeButtons,
+                },
+              },
+            ];
+          } else {
+            try {
+              actionsToExecute = typeof rule.actions === 'string' ? JSON.parse(rule.actions) : (rule.actions || []);
+            } catch {
+              actionsToExecute = [];
+            }
+          }
         } else if (defaultFlowAction && defaultFlowAction.text) {
           actionsToExecute = [
             {
               type: defaultFlowAction.type || AutomationActionType.SEND_MESSAGE,
-              payload: {
-                text: defaultFlowAction.text,
-                mediaUrl: defaultFlowAction.mediaUrl,
-                buttons: defaultFlowAction.buttons,
-              },
+              payload: defaultFlowAction,
             },
           ];
-        } else {
-          try {
-            actionsToExecute = typeof rule.actions === 'string' ? JSON.parse(rule.actions) : (rule.actions || []);
-          } catch {
-            actionsToExecute = [];
-          }
         }
+
+        if (actionsToExecute.length === 0) continue;
 
         let lastOutgoingResponse: any = null;
         let lastReplyText: string | undefined = undefined;
