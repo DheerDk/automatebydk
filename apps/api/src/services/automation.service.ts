@@ -238,6 +238,7 @@ export class AutomationService {
               to: customer.phone,
               content: messageContent,
               mediaUrl: payload.mediaUrl,
+              buttons: payload.buttons || (payload.buttonTitles ? payload.buttonTitles.map((b: string, i: number) => ({ id: String(i + 1), title: b })) : undefined),
               conversationId,
               customerId: customer.id,
             });

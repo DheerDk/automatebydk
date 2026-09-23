@@ -23,13 +23,16 @@ import {
   Check,
   UserCheck,
   Search,
-  PhoneCall
+  PhoneCall,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 
 export const CampaignsPage: React.FC = () => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
 
   // Campaign Form State
   const [name, setName] = useState('');
@@ -87,9 +90,51 @@ export const CampaignsPage: React.FC = () => {
   }, []);
 
   const openNewCampaignModal = () => {
+    setEditingCampaignId(null);
+    setName('');
+    setCustomMessage('🎉 *Exclusive VIP Mega Sale is Live!*\nGet *Flat 25% OFF* on all items today only.\n✨ High demand stock is moving fast!');
+    setMediaUrl('');
+    setWebsiteUrl('https://automatebydk.pages.dev');
+    setDiscountCode('VIP25');
+    setTargetMode('segmented');
+    setSpecificNumbers('');
+    setContactType('all');
+    setRecency('all');
+    setLeadStage('all');
+    setTagFilter('');
     setIsModalOpen(true);
     if (crmCustomers.length === 0) {
       fetchContacts();
+    }
+  };
+
+  const openEditCampaignModal = (campaign: any) => {
+    const audience = campaign.targetAudience || {};
+    setEditingCampaignId(campaign.id);
+    setName(campaign.name || '');
+    setCustomMessage(campaign.customMessage || campaign.template?.body || '');
+    setMediaUrl(audience.mediaUrl || '');
+    setWebsiteUrl(audience.websiteUrl || 'https://automatebydk.pages.dev');
+    setDiscountCode(audience.discountCode || '');
+    setTargetMode(audience.targetMode || (audience.specificNumbers ? 'specific' : 'segmented'));
+    setSpecificNumbers(audience.specificNumbers || '');
+    setContactType(audience.contactType || 'all');
+    setRecency(audience.recency || 'all');
+    setLeadStage(audience.leadStage || 'all');
+    setTagFilter(audience.tags?.[0] || '');
+    setIsModalOpen(true);
+    if (crmCustomers.length === 0) {
+      fetchContacts();
+    }
+  };
+
+  const handleDeleteCampaign = async (id: string, campaignName: string) => {
+    if (!confirm(`Are you sure you want to delete campaign "${campaignName}"?`)) return;
+    try {
+      await api.delete(`/campaigns/${id}`);
+      fetchCampaigns();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete campaign');
     }
   };
 
@@ -117,7 +162,7 @@ export const CampaignsPage: React.FC = () => {
     .map((s) => s.trim())
     .filter((s) => s.replace(/\D/g, '').length >= 5).length;
 
-  const handleCreateCampaign = async (e: React.FormEvent) => {
+  const handleSaveCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (targetMode === 'specific' && parsedSpecificCount === 0) {
@@ -126,7 +171,7 @@ export const CampaignsPage: React.FC = () => {
     }
 
     try {
-      await api.post('/campaigns', {
+      const payload = {
         name,
         customMessage,
         mediaUrl: mediaUrl || undefined,
@@ -141,12 +186,20 @@ export const CampaignsPage: React.FC = () => {
           leadStage,
           tags: tagFilter ? [tagFilter] : [],
         },
-      });
+      };
+
+      if (editingCampaignId) {
+        await api.put(`/campaigns/${editingCampaignId}`, payload);
+      } else {
+        await api.post('/campaigns', payload);
+      }
+
       setIsModalOpen(false);
+      setEditingCampaignId(null);
       setName('');
       fetchCampaigns();
     } catch (err: any) {
-      alert(err.message || 'Failed to create campaign');
+      alert(err.message || 'Failed to save campaign');
     }
   };
 
@@ -232,20 +285,39 @@ export const CampaignsPage: React.FC = () => {
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span
-                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                      c.status === 'COMPLETED'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : c.status === 'RUNNING'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                        : 'bg-slate-800 text-slate-300 border border-slate-700'
-                    }`}
-                  >
-                    {c.status}
-                  </span>
-                  <span className="text-[11px] text-slate-400">
-                    {new Date(c.createdAt).toLocaleDateString()}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        c.status === 'COMPLETED'
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          : c.status === 'RUNNING'
+                          ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                          : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      }`}
+                    >
+                      {c.status}
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      {new Date(c.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEditCampaignModal(c)}
+                      title="Edit Campaign"
+                      className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCampaign(c.id, c.name)}
+                      title="Delete Campaign"
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -341,14 +413,14 @@ export const CampaignsPage: React.FC = () => {
         )}
       </div>
 
-      {/* CREATE CAMPAIGN MODAL WITH FULL SEGMENTATION & PREVIEW */}
+      {/* CREATE / EDIT CAMPAIGN MODAL WITH FULL SEGMENTATION & PREVIEW */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 rounded-3xl shadow-2xl w-full max-w-5xl p-6 border border-slate-800 text-white my-8 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
               <div>
                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-emerald-400" /> New Smart WhatsApp Broadcast
+                  <Sparkles className="w-5 h-5 text-emerald-400" /> {editingCampaignId ? 'Edit Smart WhatsApp Broadcast' : 'New Smart WhatsApp Broadcast'}
                 </h3>
                 <p className="text-xs text-slate-400">
                   Target only relevant customers or specific phone numbers while protecting personal family contacts from spam.
@@ -362,7 +434,7 @@ export const CampaignsPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateCampaign} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <form onSubmit={handleSaveCampaign} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Column: Form & Audience Segmentation */}
               <div className="lg:col-span-7 space-y-4 text-xs">
                 <div>
@@ -624,7 +696,7 @@ export const CampaignsPage: React.FC = () => {
                     type="submit"
                     className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer"
                   >
-                    Create & Review Broadcast
+                    {editingCampaignId ? 'Update Broadcast' : 'Create & Review Broadcast'}
                   </button>
                 </div>
               </div>

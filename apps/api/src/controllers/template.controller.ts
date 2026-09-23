@@ -56,6 +56,44 @@ export class TemplateController {
     }
   }
 
+  public static async update(req: Request, res: Response, next: NextFunction) {
+    try {
+      const organizationId = req.organizationId!;
+      const { id } = req.params;
+      const { name, category, language, body, variables } = req.body;
+
+      const existing = await prisma.messageTemplate.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Template not found', 404);
+      }
+
+      const updated = await prisma.messageTemplate.update({
+        where: { id },
+        data: {
+          name: name ? name.toLowerCase().replace(/[^a-z0-9_]/g, '_') : existing.name,
+          category: category ?? existing.category,
+          language: language ?? existing.language,
+          body: body ?? existing.body,
+          variables: variables ? JSON.stringify(variables) : existing.variables,
+        },
+      });
+
+      return res.json({
+        success: true,
+        message: 'Template updated successfully',
+        data: {
+          ...updated,
+          variables: JSON.parse(updated.variables),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   public static async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;

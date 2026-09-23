@@ -22,6 +22,7 @@ import { ProductsPage } from './pages/products/ProductsPage';
 import { CustomersPage } from './pages/customers/CustomersPage';
 import { AutomationsPage } from './pages/automations/AutomationsPage';
 import { CampaignsPage } from './pages/campaigns/CampaignsPage';
+import { TemplatesPage } from './pages/templates/TemplatesPage';
 import { AiTrainingPage } from './pages/ai/AiTrainingPage';
 import { AiSandboxPage } from './pages/ai/AiSandboxPage';
 import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
@@ -59,7 +60,7 @@ export const App: React.FC = () => {
                   <Route path="customers" element={<CustomersPage />} />
                   <Route path="automations" element={<AutomationsPage />} />
                   <Route path="campaigns" element={<CampaignsPage />} />
-                  <Route path="templates" element={<CampaignsPage />} />
+                  <Route path="templates" element={<TemplatesPage />} />
                   <Route path="ai" element={<AiTrainingPage />} />
                   <Route path="ai/sandbox" element={<AiSandboxPage />} />
                   <Route path="analytics" element={<AnalyticsPage />} />

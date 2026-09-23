@@ -87,6 +87,95 @@ export class CampaignController {
     }
   }
 
+  public static async update(req: Request, res: Response, next: NextFunction) {
+    try {
+      const organizationId = req.organizationId!;
+      const { id } = req.params;
+      const {
+        name,
+        templateId,
+        customMessage,
+        mediaUrl,
+        websiteUrl,
+        discountCode,
+        targetAudience = { all: true, contactType: 'all', recency: 'all', leadStage: 'all', tags: [] },
+        scheduledAt,
+      } = req.body;
+
+      const existing = await prisma.campaign.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Campaign not found', 404);
+      }
+
+      let finalMessage = customMessage || '';
+      if (discountCode && !finalMessage.includes(discountCode)) {
+        finalMessage += `\n\n🏷️ Use Coupon Code: *${discountCode.toUpperCase()}*`;
+      }
+      if (websiteUrl && !finalMessage.includes(websiteUrl)) {
+        finalMessage += `\n🌐 Shop Online: ${websiteUrl}`;
+      }
+
+      const audiencePayload = {
+        ...targetAudience,
+        mediaUrl: mediaUrl || undefined,
+        websiteUrl: websiteUrl || undefined,
+        discountCode: discountCode || undefined,
+      };
+
+      const updated = await prisma.campaign.update({
+        where: { id },
+        data: {
+          templateId: templateId || null,
+          name: name ?? existing.name,
+          customMessage: finalMessage || null,
+          targetAudience: JSON.stringify(audiencePayload),
+          scheduledAt: scheduledAt ? new Date(scheduledAt) : existing.scheduledAt,
+        },
+        include: { template: true },
+      });
+
+      return res.json({
+        success: true,
+        message: 'Campaign updated successfully',
+        data: {
+          ...updated,
+          targetAudience: JSON.parse(updated.targetAudience),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  public static async delete(req: Request, res: Response, next: NextFunction) {
+    try {
+      const organizationId = req.organizationId!;
+      const { id } = req.params;
+
+      const existing = await prisma.campaign.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Campaign not found', 404);
+      }
+
+      await prisma.campaign.delete({
+        where: { id },
+      });
+
+      return res.json({
+        success: true,
+        message: 'Campaign deleted successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   public static async launch(req: Request, res: Response, next: NextFunction) {
     try {
       const organizationId = req.organizationId!;

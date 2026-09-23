@@ -89,10 +89,13 @@ tenantRouter.delete('/automations/:id', AutomationController.delete);
 // Templates & Broadcast Campaigns
 tenantRouter.get('/templates', TemplateController.list);
 tenantRouter.post('/templates', TemplateController.create);
+tenantRouter.put('/templates/:id', TemplateController.update);
 tenantRouter.delete('/templates/:id', TemplateController.delete);
 
 tenantRouter.get('/campaigns', CampaignController.list);
 tenantRouter.post('/campaigns', CampaignController.create);
+tenantRouter.put('/campaigns/:id', CampaignController.update);
+tenantRouter.delete('/campaigns/:id', CampaignController.delete);
 tenantRouter.post('/campaigns/:id/launch', CampaignController.launch);
 
 // Analytics

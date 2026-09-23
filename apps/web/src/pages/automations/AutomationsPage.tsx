@@ -59,12 +59,21 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+interface FlowButton {
+  id: string;
+  title: string;
+  type?: 'QUICK_REPLY' | 'URL' | 'CATALOG' | 'CALL';
+  url?: string;
+  phoneNumber?: string;
+}
+
 interface FlowBranch {
   id: string;
   conditionType: 'NUMBER_CHOICE' | 'EQUALS' | 'CONTAINS';
   value: string; // e.g. "1", "price", "order"
   title: string;
   mediaUrl?: string;
+  buttons?: FlowButton[];
   actions: {
     type: 'SEND_MESSAGE' | 'SEND_CATALOG' | 'SEND_LOCATION' | 'SEND_WEBSITE' | 'CREATE_LEAD' | 'ADD_TAGS' | 'HUMAN_HANDOFF';
     text?: string;
@@ -73,6 +82,7 @@ interface FlowBranch {
     address?: string;
     leadStatus?: string;
     tags?: string[];
+    buttons?: FlowButton[];
   }[];
 }
 
@@ -81,10 +91,12 @@ interface VisualFlowData {
   triggerType: string;
   welcomeMediaUrl?: string;
   branches: FlowBranch[];
+  buttons?: FlowButton[];
   defaultAction: {
     type: 'SEND_MESSAGE' | 'AI_FALLBACK' | 'HUMAN_HANDOFF';
     text: string;
     mediaUrl?: string;
+    buttons?: FlowButton[];
   };
 }
 
@@ -1161,6 +1173,99 @@ export const AutomationsPage: React.FC = () => {
                           </span>
                         </div>
                       )}
+
+                      {/* Interactive Action Buttons Customizer for this Step */}
+                      <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2 mt-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-semibold text-teal-300 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+                            WhatsApp Interactive Buttons (e.g. Book Appointment, View Services, View Collection)
+                          </label>
+                          <span className="text-[10px] text-slate-400">Up to 3 Quick Action Buttons</span>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {(selectedBranch.buttons || [
+                            { id: '1', title: '📋 View Collection' },
+                            { id: '2', title: '🧑‍💼 Talk to Support' }
+                          ]).map((btn, bIdx) => (
+                            <div key={bIdx} className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] font-bold">
+                                {bIdx + 1}
+                              </span>
+                              <input
+                                type="text"
+                                value={btn.title}
+                                onChange={(e) => {
+                                  const currentBtns = [...(selectedBranch.buttons || [
+                                    { id: '1', title: '📋 View Collection' },
+                                    { id: '2', title: '🧑‍💼 Talk to Support' }
+                                  ])];
+                                  currentBtns[bIdx] = { ...currentBtns[bIdx], title: e.target.value };
+                                  const updated = branches.map((b) => {
+                                    if (b.id === selectedBranch.id) {
+                                      const acts = [...b.actions];
+                                      acts[0] = { ...acts[0], buttons: currentBtns };
+                                      return { ...b, buttons: currentBtns, actions: acts };
+                                    }
+                                    return b;
+                                  });
+                                  setBranches(updated);
+                                }}
+                                placeholder="e.g. Book Appointment, View Collection, View Services"
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-teal-300 font-semibold focus:outline-none focus:border-teal-400"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentBtns = (selectedBranch.buttons || [
+                                    { id: '1', title: '📋 View Collection' },
+                                    { id: '2', title: '🧑‍💼 Talk to Support' }
+                                  ]).filter((_, i) => i !== bIdx);
+                                  const updated = branches.map((b) => {
+                                    if (b.id === selectedBranch.id) {
+                                      const acts = [...b.actions];
+                                      acts[0] = { ...acts[0], buttons: currentBtns };
+                                      return { ...b, buttons: currentBtns, actions: acts };
+                                    }
+                                    return b;
+                                  });
+                                  setBranches(updated);
+                                }}
+                                className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
+                                title="Remove Button"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+
+                          {(selectedBranch.buttons?.length || 2) < 3 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentBtns = [...(selectedBranch.buttons || [
+                                  { id: '1', title: '📋 View Collection' },
+                                  { id: '2', title: '🧑‍💼 Talk to Support' }
+                                ])];
+                                currentBtns.push({ id: String(currentBtns.length + 1), title: '✨ Quick Action' });
+                                const updated = branches.map((b) => {
+                                  if (b.id === selectedBranch.id) {
+                                    const acts = [...b.actions];
+                                    acts[0] = { ...acts[0], buttons: currentBtns };
+                                    return { ...b, buttons: currentBtns, actions: acts };
+                                  }
+                                  return b;
+                                });
+                                setBranches(updated);
+                              }}
+                              className="text-[11px] text-teal-400 hover:text-teal-300 font-semibold flex items-center gap-1 pt-1 cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" /> Add Interactive Button
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Action 2: Lead CRM Status & Customer Tag */}
@@ -1248,11 +1353,45 @@ export const AutomationsPage: React.FC = () => {
               </div>
 
               <textarea
-                rows={5}
+                rows={4}
                 value={defaultAction.text}
                 onChange={(e) => setDefaultAction({ ...defaultAction, text: e.target.value })}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-100 font-sans focus:ring-1 focus:ring-emerald-500 focus:outline-none leading-relaxed"
               />
+
+              {/* Welcome Greeting Interactive Buttons Customizer */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-teal-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+                    Welcome Greeting Interactive WhatsApp Buttons (e.g. Book Appointment, View Services)
+                  </label>
+                  <span className="text-[10px] text-slate-400">Clicking button triggers matching branch</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {branches.slice(0, 3).map((b, idx) => (
+                    <div key={b.id} className="bg-slate-900 border border-slate-700/80 rounded-lg p-2 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 flex items-center justify-center text-[10px] font-bold">
+                        {idx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        value={b.title.replace(/^Option \d+:\s*/i, '')}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const updated = branches.map((branch) =>
+                            branch.id === b.id ? { ...branch, title: `Option ${idx + 1}: ${val}` } : branch
+                          );
+                          setBranches(updated);
+                        }}
+                        className="w-full bg-transparent text-xs text-teal-300 font-semibold focus:outline-none border-b border-transparent focus:border-teal-400"
+                        placeholder="Button Title"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1263,7 +1402,7 @@ export const AutomationsPage: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <Smartphone className="w-5 h-5 text-emerald-400" />
                   <div>
-                    <h4 className="text-sm font-bold text-white">Live Flow Simulator</h4>
+                    <h4 className="text-sm font-bold text-white">Live WhatsApp Simulator</h4>
                     <p className="text-[11px] text-slate-400">Click buttons or type to test</p>
                   </div>
                 </div>
@@ -1278,38 +1417,43 @@ export const AutomationsPage: React.FC = () => {
                       },
                     ])
                   }
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800 hover:bg-slate-700 transition text-xs flex items-center gap-1"
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800 hover:bg-slate-700 transition text-xs flex items-center gap-1 cursor-pointer"
                   title="Reset Simulator"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              {/* Chat Screen Mockup */}
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl h-[470px] flex flex-col justify-between overflow-hidden shadow-inner">
-                {/* Header Mockup */}
-                <div className="bg-slate-900 px-3.5 py-2.5 border-b border-slate-800 flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-slate-950 font-bold text-xs">
-                    DK
+              {/* WhatsApp Smartphone Frame */}
+              <div className="bg-[#111b21] rounded-[32px] border-4 border-slate-800 shadow-2xl overflow-hidden flex flex-col h-[520px]">
+                {/* Phone WhatsApp Top Bar */}
+                <div className="bg-[#202c33] px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between text-white">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center font-bold text-xs shadow-md">
+                      DK
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white leading-tight">AutoMate Official</p>
+                      <p className="text-[9px] text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-2.5 h-2.5" /> Verified Business Bot
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-white leading-tight">AutoMate by DK</p>
-                    <p className="text-[10px] text-emerald-400 leading-none">🟢 online bot</p>
-                  </div>
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
                 </div>
 
                 {/* Messages Body */}
-                <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
+                <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs bg-[#0c1317]">
                   {simMessages.map((m, idx) => (
                     <div
                       key={idx}
                       className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
                     >
                       <div
-                        className={`max-w-[90%] rounded-2xl overflow-hidden shadow-md ${
+                        className={`max-w-[92%] rounded-2xl overflow-hidden shadow-md ${
                           m.sender === 'user'
-                            ? 'bg-emerald-600 text-white rounded-tr-none p-3'
-                            : 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700'
+                            ? 'bg-[#005c4b] text-white rounded-tr-none p-3'
+                            : 'bg-[#202c33] text-slate-100 rounded-tl-none border border-slate-700/60'
                         }`}
                       >
                         {/* Media Flyer Image if present */}
@@ -1325,36 +1469,34 @@ export const AutomationsPage: React.FC = () => {
                             />
                           </div>
                         )}
-                        <div className="p-3 whitespace-pre-wrap leading-relaxed">
+                        <div className="p-3 whitespace-pre-wrap leading-relaxed text-xs">
                           {m.text}
                         </div>
-                      </div>
 
-                      {/* Render Interactive WhatsApp Clickable Action Buttons for Bot Message */}
-                      {m.sender === 'bot' && idx === simMessages.length - 1 && (
-                        <div className="flex flex-wrap gap-1.5 pt-2 max-w-[95%]">
-                          {branches.map((b) => (
-                            <button
-                              key={b.id}
-                              onClick={() => handleSimSend(b.value)}
-                              className="px-2.5 py-1.5 bg-slate-900 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 text-[10px] font-bold rounded-xl border border-emerald-500/40 shadow-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
-                            >
-                              {b.actions[0]?.type === 'SEND_LOCATION' ? (
-                                <MapPin className="w-3 h-3 text-emerald-400" />
-                              ) : b.actions[0]?.type === 'SEND_WEBSITE' ? (
-                                <Globe className="w-3 h-3 text-blue-400" />
-                              ) : b.actions[0]?.type === 'SEND_CATALOG' ? (
-                                <ShoppingBag className="w-3 h-3 text-amber-400" />
-                              ) : b.actions[0]?.type === 'HUMAN_HANDOFF' ? (
-                                <UserCheck className="w-3 h-3 text-purple-400" />
-                              ) : (
-                                <Sparkles className="w-3 h-3 text-emerald-400" />
-                              )}
-                              <span>{b.title}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                        {/* WhatsApp Native Interactive Buttons Stack */}
+                        {m.sender === 'bot' && (
+                          <div className="border-t border-slate-700/60 divide-y divide-slate-700/60 bg-[#182229]">
+                            {branches.slice(0, 3).map((b) => (
+                              <button
+                                key={b.id}
+                                onClick={() => handleSimSend(b.value)}
+                                className="w-full py-2.5 px-3 text-sky-400 hover:text-sky-300 hover:bg-[#202c33] text-xs font-bold text-center flex items-center justify-center gap-2 transition active:bg-sky-950/40 cursor-pointer"
+                              >
+                                {b.actions[0]?.type === 'SEND_CATALOG' ? (
+                                  <ShoppingBag className="w-3.5 h-3.5 text-sky-400" />
+                                ) : b.actions[0]?.type === 'SEND_LOCATION' ? (
+                                  <MapPin className="w-3.5 h-3.5 text-sky-400" />
+                                ) : b.actions[0]?.type === 'SEND_WEBSITE' ? (
+                                  <Globe className="w-3.5 h-3.5 text-sky-400" />
+                                ) : (
+                                  <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                                )}
+                                <span>{b.title.replace(/^Option \d+:\s*/i, '')}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
