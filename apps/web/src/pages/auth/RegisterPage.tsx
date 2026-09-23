@@ -148,20 +148,26 @@ export const RegisterPage: React.FC = () => {
       setError('Passwords do not match');
       return;
     }
+    if (authData.password.length < 8) {
+      setError('Password must be at least 8 characters long');
+      return;
+    }
 
-    setError(null);
-    setIsLoading(true);
-    try {
-      const res = await sendOtp({ email: authData.email, phone: authData.phone, purpose: 'REGISTER' });
-      setIsOtpSent(true);
-      if (res.previewOtp) {
-        setOtpPreview(res.previewOtp);
+    if (authData.phone) {
+      setError(null);
+      setIsLoading(true);
+      try {
+        await sendOtp({ phone: authData.phone, purpose: 'REGISTER' });
+        setIsOtpSent(true);
+        setOtpTimer(60);
+      } catch (err: any) {
+        // If SMS provider not configured, proceed seamlessly
+        setStep(3);
+      } finally {
+        setIsLoading(false);
       }
-      setOtpTimer(60);
-    } catch (err: any) {
-      setError(err.message || 'Failed to send OTP code');
-    } finally {
-      setIsLoading(false);
+    } else {
+      setStep(3);
     }
   };
 
@@ -176,35 +182,32 @@ export const RegisterPage: React.FC = () => {
     setError(null);
     setIsLoading(true);
     try {
-      await verifyOtp({ email: authData.email, otp: fullOtp });
+      if (authData.phone) {
+        await verifyOtp({ phone: authData.phone, otp: fullOtp, purpose: 'REGISTER' });
+      }
       setStep(3); // Proceed to Payment Checkout
     } catch (err: any) {
-      setError(err.message || 'Invalid verification code. Use preview code above.');
+      setError(err.message || 'Invalid verification code');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Quick Google Sign In simulation
+  const { getGoogleAuthUrl } = useAuth();
+  // Official Google Sign In
   const handleGoogleAuth = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const mockGoogle = {
-        email: authData.email || 'priya.sharma@gmail.com',
-        name: authData.ownerName || 'Priya Sharma',
-        avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-        googleId: `google_oauth_${Date.now()}`,
-        planTier: selectedPlan.tier,
-        billingCycle,
-        businessName: businessData.businessName || 'Priya Boutique Studio',
-        phone: authData.phone || '+91 98765 43210',
-      };
-      await loginWithGoogle(mockGoogle);
-      setStep(3); // Proceed to payment
+      const authInfo = await getGoogleAuthUrl();
+      if (!authInfo.isConfigured || !authInfo.url) {
+        setError(authInfo.message || 'Google Sign-In is not configured on this server yet.');
+        setIsLoading(false);
+        return;
+      }
+      window.location.href = authInfo.url;
     } catch (err: any) {
       setError(err.message || 'Google authentication failed');
-    } finally {
       setIsLoading(false);
     }
   };

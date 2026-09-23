@@ -14,6 +14,8 @@ import {
   BarChart3,
   QrCode,
   Settings,
+  Shield,
+  User,
   ShieldAlert,
   Sparkles,
   X,
@@ -40,6 +42,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { label: 'AI Assistant', icon: Bot, path: '/dashboard/ai' },
     { label: 'Analytics', icon: BarChart3, path: '/dashboard/analytics' },
     { label: 'WhatsApp Setup', icon: QrCode, path: '/dashboard/settings?tab=whatsapp' },
+    { label: 'Security & Devices', icon: Shield, path: '/dashboard/security' },
+    { label: 'My Profile', icon: User, path: '/dashboard/profile' },
     { label: 'Settings', icon: Settings, path: '/dashboard/settings' },
   ];
 

@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  Sparkles,
   Mail,
   Lock,
   ArrowRight,
@@ -11,28 +10,54 @@ import {
   KeyRound,
   CheckCircle2,
   Clock,
-  UserCheck,
   Building2,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, loginWithGoogle, sendOtp, verifyOtp } = useAuth();
+  const { login, getGoogleAuthUrl, sendOtp, verifyOtp } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [loginMode, setLoginMode] = useState<'PASSWORD' | 'OTP'>('PASSWORD');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
+    rememberMe: true,
   });
 
   // OTP Login State
-  const [otpTarget, setOtpTarget] = useState('');
+  const [phoneInput, setPhoneInput] = useState('');
   const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
   const [isOtpSent, setIsOtpSent] = useState(false);
-  const [otpPreview, setOtpPreview] = useState<string | null>(null);
+  const [maskedPhone, setMaskedPhone] = useState('');
+  const [cooldown, setCooldown] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      setError(decodeURIComponent(errorParam));
+    }
+    const verifiedParam = searchParams.get('verified');
+    if (verifiedParam) {
+      setInfoMessage('Your email has been verified successfully! You can now log in.');
+    }
+  }, [searchParams]);
+
+  // Cooldown countdown effect
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,90 +66,94 @@ export const LoginPage: React.FC = () => {
 
     try {
       await login(formData);
-      // If superadmin, route to /super-admin, else /dashboard
       if (formData.email.toLowerCase().includes('admin@chatflow.ai')) {
         navigate('/super-admin');
       } else {
         navigate('/dashboard');
       }
     } catch (err: any) {
-      setError(err.message || 'Invalid email or password');
+      setError(err.message || 'Invalid email or password.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleSendOtpLogin = async () => {
-    if (!otpTarget) {
-      setError('Please enter your registered email or phone');
+    if (!phoneInput.trim()) {
+      setError('Please enter your phone number with country code (e.g. +919876543210)');
       return;
     }
     setError(null);
     setIsLoading(true);
     try {
-      const res = await sendOtp({ email: otpTarget, purpose: 'LOGIN' });
+      const res = await sendOtp({ phone: phoneInput.trim(), purpose: 'LOGIN' });
       setIsOtpSent(true);
-      if (res.previewOtp) {
-        setOtpPreview(res.previewOtp);
-      }
+      setMaskedPhone(res.phone || phoneInput);
+      setCooldown(res.cooldownSeconds || 60);
+      setInfoMessage(`A 6-digit verification code was sent to ${res.phone || phoneInput}.`);
     } catch (err: any) {
-      setError(err.message || 'Failed to send OTP code');
+      setError(err.message || 'Failed to send verification code. Please check your phone number.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleVerifyOtpLogin = async () => {
+  const handleOtpDigitChange = (index: number, val: string) => {
+    const cleaned = val.replace(/\D/g, '');
+    if (!cleaned && val !== '') return;
+
+    const newCode = [...otpCode];
+    newCode[index] = cleaned.slice(-1);
+    setOtpCode(newCode);
+
+    // Auto-focus next input
+    if (cleaned && index < 5) {
+      const nextInput = document.getElementById(`otp-input-${index + 1}`);
+      nextInput?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-input-${index - 1}`);
+      prevInput?.focus();
+    }
+  };
+
+  const handleVerifyOtpLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
     const fullOtp = otpCode.join('');
     if (fullOtp.length < 6) {
-      setError('Please enter the 6-digit OTP code');
+      setError('Please enter all 6 digits of the verification code.');
       return;
     }
     setError(null);
     setIsLoading(true);
     try {
-      await verifyOtp({ email: otpTarget, otp: fullOtp });
+      await verifyOtp({ phone: phoneInput.trim(), otp: fullOtp, purpose: 'LOGIN' });
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.message || 'Invalid OTP code');
+      setError(err.message || 'Invalid or expired verification code.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setIsLoading(true);
+  const handleOfficialGoogleLogin = async () => {
     setError(null);
+    setIsGoogleLoading(true);
     try {
-      await loginWithGoogle({
-        email: formData.email || 'priya.sharma@gmail.com',
-        name: 'Priya Sharma',
-        avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-        googleId: 'google_oauth_priya_demo',
-      });
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Google authentication failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Quick Demo Account Auto-Fill
-  const handleQuickDemoLogin = async (email: string, pass: string, isSuperAdmin: boolean = false) => {
-    setError(null);
-    setIsLoading(true);
-    try {
-      await login({ email, password: pass });
-      if (isSuperAdmin) {
-        navigate('/super-admin');
-      } else {
-        navigate('/dashboard');
+      const authInfo = await getGoogleAuthUrl();
+      if (!authInfo.isConfigured || !authInfo.url) {
+        setError(authInfo.message || 'Google Sign-In is not configured yet. Please configure GOOGLE_CLIENT_ID in your backend environment.');
+        setIsGoogleLoading(false);
+        return;
       }
+      // Redirect browser to official Google OAuth 2.0 endpoint
+      window.location.href = authInfo.url;
     } catch (err: any) {
-      setError(err.message || 'Demo login failed');
-    } finally {
-      setIsLoading(false);
+      setError(err.message || 'Failed to initiate Google authentication.');
+      setIsGoogleLoading(false);
     }
   };
 
@@ -149,252 +178,255 @@ export const LoginPage: React.FC = () => {
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md px-4">
         <div className="bg-slate-900 py-7 px-6 shadow-2xl rounded-2xl border border-slate-800 space-y-5">
           {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400">
-              {error}
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
-          {/* Google Sign-In */}
+          {infoMessage && (
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{infoMessage}</span>
+            </div>
+          )}
+
+          {/* Official Google OAuth Sign-In */}
           <button
             type="button"
-            onClick={handleGoogleLogin}
-            disabled={isLoading}
-            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-900 py-2.5 px-4 rounded-xl text-xs font-bold shadow-md transition-all"
+            onClick={handleOfficialGoogleLogin}
+            disabled={isGoogleLoading || isLoading}
+            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-700 hover:border-slate-600 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-sm font-semibold text-white transition-all shadow-xs disabled:opacity-50"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
-            <span>Sign in with Google</span>
+            {isGoogleLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+            )}
+            <span>Continue with Google</span>
           </button>
 
-          <div className="relative flex py-1 items-center">
-            <div className="flex-grow border-t border-slate-800" />
-            <span className="flex-shrink mx-3 text-[11px] text-slate-500 uppercase font-semibold">Or continue with</span>
-            <div className="flex-grow border-t border-slate-800" />
+          <div className="relative flex items-center justify-center">
+            <div className="border-t border-slate-800 w-full" />
+            <span className="bg-slate-900 px-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Or sign in with
+            </span>
+            <div className="border-t border-slate-800 w-full" />
           </div>
 
-          {/* Tab: Email Password vs OTP */}
-          <div className="grid grid-cols-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+          {/* Mode Switch Tabs */}
+          <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
             <button
               type="button"
-              onClick={() => setLoginMode('PASSWORD')}
-              className={`py-1.5 rounded-lg transition-all ${
-                loginMode === 'PASSWORD' ? 'bg-emerald-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+              onClick={() => {
+                setLoginMode('PASSWORD');
+                setError(null);
+              }}
+              className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                loginMode === 'PASSWORD'
+                  ? 'bg-slate-800 text-emerald-400 shadow-xs'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
-              Password Login
+              Email &amp; Password
             </button>
             <button
               type="button"
-              onClick={() => setLoginMode('OTP')}
-              className={`py-1.5 rounded-lg transition-all ${
-                loginMode === 'OTP' ? 'bg-emerald-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+              onClick={() => {
+                setLoginMode('OTP');
+                setError(null);
+              }}
+              className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                loginMode === 'OTP'
+                  ? 'bg-slate-800 text-emerald-400 shadow-xs'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
-              OTP Login
+              Phone SMS OTP
             </button>
           </div>
 
-          {/* Form: Password Login */}
-          {loginMode === 'PASSWORD' ? (
+          {/* PASSWORD LOGIN FORM */}
+          {loginMode === 'PASSWORD' && (
             <form onSubmit={handlePasswordLogin} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Email address</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Business Email</label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                   <input
                     type="email"
                     required
-                    placeholder="owner@stylehub.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    placeholder="name@company.com"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-hidden focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-300">Password</label>
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                   <input
                     type="password"
                     required
-                    placeholder="••••••••"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    placeholder="••••••••••••"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-hidden focus:border-emerald-500"
                   />
                 </div>
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  checked={formData.rememberMe}
+                  onChange={(e) => setFormData({ ...formData, rememberMe: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-emerald-400"
+                />
+                <label htmlFor="remember-me" className="ml-2 block text-xs text-slate-400">
+                  Remember this device for 30 days
+                </label>
               </div>
 
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all"
+                className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
               >
-                {isLoading ? (
-                  <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <span>Sign In to Dashboard</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                <span>Sign In to Workspace</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </form>
-          ) : (
-            /* OTP Login */
+          )}
+
+          {/* REAL PHONE OTP LOGIN FORM */}
+          {loginMode === 'OTP' && (
             <div className="space-y-4">
               {!isOtpSent ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">Registered Email or Phone</label>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Phone Number (E.164 Format)
+                    </label>
                     <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <Phone className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                       <input
-                        type="text"
-                        required
-                        placeholder="owner@stylehub.com"
-                        value={otpTarget}
-                        onChange={(e) => setOtpTarget(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                        type="tel"
+                        value={phoneInput}
+                        onChange={(e) => setPhoneInput(e.target.value)}
+                        placeholder="+919876543210"
+                        className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-hidden focus:border-emerald-500 font-mono"
                       />
                     </div>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Include your country code (e.g. +91 for India, +1 for US/Canada).
+                    </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={handleSendOtpLogin}
-                    disabled={isLoading}
-                    className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all"
+                    disabled={isLoading || !phoneInput.trim()}
+                    className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
                   >
-                    {isLoading ? (
-                      <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <span>Get 6-Digit OTP</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    <span>Send Verification SMS</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3 text-center">
-                  {otpPreview && (
-                    <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-400 flex items-center justify-between">
-                      <span>💡 Dev OTP: <strong>{otpPreview}</strong></span>
-                      <button
-                        type="button"
-                        onClick={() => setOtpCode(otpPreview.split(''))}
-                        className="text-[10px] underline font-bold"
-                      >
-                        Auto-fill
-                      </button>
-                    </div>
-                  )}
+                <form onSubmit={handleVerifyOtpLogin} className="space-y-4">
+                  <div className="text-center">
+                    <p className="text-xs text-slate-400">
+                      Enter the 6-digit code sent via SMS to <span className="text-white font-bold">{maskedPhone}</span>
+                    </p>
+                  </div>
 
-                  <p className="text-xs text-slate-300">
-                    Enter the code sent to <strong className="text-white">{otpTarget}</strong>
-                  </p>
-
-                  <div className="flex justify-center gap-2 my-2">
-                    {otpCode.map((digit, idx) => (
+                  <div className="flex justify-between gap-2">
+                    {otpCode.map((digit, index) => (
                       <input
-                        key={idx}
-                        id={`login-otp-${idx}`}
+                        key={index}
+                        id={`otp-input-${index}`}
                         type="text"
                         maxLength={1}
                         value={digit}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const newOtp = [...otpCode];
-                          newOtp[idx] = val;
-                          setOtpCode(newOtp);
-                          if (val && idx < 5) {
-                            document.getElementById(`login-otp-${idx + 1}`)?.focus();
-                          }
-                        }}
-                        className="w-9 h-11 text-center text-base font-black bg-slate-950 border border-slate-700 rounded-xl text-emerald-400 focus:outline-none focus:border-emerald-500"
+                        onChange={(e) => handleOtpDigitChange(index, e.target.value)}
+                        onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                        className="w-11 h-12 text-center text-lg font-bold bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-emerald-500"
                       />
                     ))}
                   </div>
 
                   <button
-                    type="button"
-                    onClick={handleVerifyOtpLogin}
-                    disabled={isLoading}
-                    className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-2.5 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all"
+                    type="submit"
+                    disabled={isLoading || otpCode.join('').length < 6}
+                    className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
                   >
-                    {isLoading ? (
-                      <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <span>Verify &amp; Sign In</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    <span>Verify &amp; Enter Dashboard</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
-                </div>
+
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOtpSent(false);
+                        setOtpCode(['', '', '', '', '', '']);
+                      }}
+                      className="hover:text-white"
+                    >
+                      Change Number
+                    </button>
+
+                    {cooldown > 0 ? (
+                      <span className="text-slate-500">Resend in {cooldown}s</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleSendOtpLogin}
+                        disabled={isLoading}
+                        className="text-emerald-400 hover:text-emerald-300 font-semibold"
+                      >
+                        Resend Code
+                      </button>
+                    )}
+                  </div>
+                </form>
               )}
             </div>
           )}
-
-          {/* Quick Demo Switcher Panel */}
-          <div className="pt-4 border-t border-slate-800 space-y-2">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block text-center">
-              ⚡ Quick 1-Click Demo Accounts
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('admin@chatflow.ai', 'Admin@123456', true)}
-                className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-left transition-all"
-              >
-                <div className="flex items-center gap-1.5 font-bold text-xs">
-                  <ShieldAlert className="w-3.5 h-3.5" /> Super Admin
-                </div>
-                <span className="text-[10px] text-amber-400/80 block mt-0.5">Platform Console</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('owner@stylehub.com', 'Password@123')}
-                className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 text-left transition-all"
-              >
-                <div className="flex items-center gap-1.5 font-bold text-xs">
-                  <Building2 className="w-3.5 h-3.5" /> Active Store
-                </div>
-                <span className="text-[10px] text-emerald-400/80 block mt-0.5">StyleHub (Growth)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('pending@luxurydental.com', 'Password@123')}
-                className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500/20 text-left transition-all"
-              >
-                <div className="flex items-center gap-1.5 font-bold text-xs">
-                  <Clock className="w-3.5 h-3.5" /> Pending Store
-                </div>
-                <span className="text-[10px] text-blue-400/80 block mt-0.5">Dental Clinic (Pro)</span>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

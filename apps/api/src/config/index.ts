@@ -45,4 +45,29 @@ export const config = {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
     useRedis: process.env.USE_REDIS === 'true',
   },
+
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/google/callback`,
+  },
+
+  sms: {
+    provider: process.env.SMS_PROVIDER || 'twilio', // twilio, fast2sms, generic
+    apiKey: process.env.SMS_PROVIDER_API_KEY || '',
+    twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
+    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
+    twilioFromPhone: process.env.TWILIO_FROM_PHONE || '',
+  },
+
+  email: {
+    provider: process.env.EMAIL_PROVIDER || 'smtp', // smtp, resend, sendgrid
+    fromEmail: process.env.EMAIL_FROM || 'noreply@automatebydk.com',
+    fromName: process.env.EMAIL_FROM_NAME || 'AutoMate by DK',
+    apiKey: process.env.EMAIL_PROVIDER_API_KEY || '',
+    smtpHost: process.env.SMTP_HOST || '',
+    smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
+    smtpUser: process.env.SMTP_USER || '',
+    smtpPass: process.env.SMTP_PASS || '',
+  },
 };

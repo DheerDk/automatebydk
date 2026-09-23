@@ -88,16 +88,107 @@ export async function ensureDatabaseReady() {
     // Ensure User columns
     const userColumns = [
       `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isVerified" BOOLEAN DEFAULT false;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isEmailVerified" BOOLEAN DEFAULT false;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isPhoneVerified" BOOLEAN DEFAULT false;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'ACTIVE';`,
       `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "authProvider" TEXT DEFAULT 'LOCAL';`,
       `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "otpCode" TEXT;`,
       `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "otpExpires" TIMESTAMP(3);`,
       `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "googleId" TEXT;`,
       `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "resetToken" TEXT;`,
       `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "resetExpires" TIMESTAMP(3);`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP(3);`,
     ];
     for (const col of userColumns) {
       await prisma.$executeRawUnsafe(col).catch(() => {});
     }
+
+    // Ensure Auth Tables exist
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "UserAuthProvider" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "provider" TEXT NOT NULL,
+        "providerUserId" TEXT NOT NULL,
+        "providerEmail" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "UserAuthProvider_provider_providerUserId_key" UNIQUE ("provider", "providerUserId")
+      );
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Session" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "sessionTokenHash" TEXT UNIQUE NOT NULL,
+        "ipAddress" TEXT,
+        "userAgent" TEXT,
+        "deviceName" TEXT,
+        "browser" TEXT,
+        "os" TEXT,
+        "isRevoked" BOOLEAN NOT NULL DEFAULT false,
+        "revokedAt" TIMESTAMP(3),
+        "lastActiveAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "OtpChallenge" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT,
+        "phone" TEXT NOT NULL,
+        "otpHash" TEXT NOT NULL,
+        "purpose" TEXT NOT NULL DEFAULT 'LOGIN',
+        "attempts" INTEGER NOT NULL DEFAULT 0,
+        "maxAttempts" INTEGER NOT NULL DEFAULT 5,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "consumedAt" TIMESTAMP(3),
+        "ipAddress" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "EmailVerificationToken" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "email" TEXT NOT NULL,
+        "tokenHash" TEXT UNIQUE NOT NULL,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "consumedAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "PasswordResetToken" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "tokenHash" TEXT UNIQUE NOT NULL,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "consumedAt" TIMESTAMP(3),
+        "ipAddress" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "LoginAttempt" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT,
+        "identifier" TEXT NOT NULL,
+        "authMethod" TEXT NOT NULL,
+        "status" TEXT NOT NULL,
+        "failureReason" TEXT,
+        "ipAddress" TEXT,
+        "userAgent" TEXT,
+        "deviceName" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `).catch(() => {});
 
     // Ensure Organization columns
     const orgColumns = [

@@ -11,6 +11,33 @@ export {
   CampaignStatus,
 } from '@chatflow/shared';
 
+export interface ConnectedAccount {
+  provider: string;
+  email?: string | null;
+  connectedAt: string;
+}
+
+export interface UserSession {
+  id: string;
+  deviceName: string;
+  browser: string;
+  os: string;
+  ipAddress: string;
+  isCurrent: boolean;
+  lastActiveAt: string;
+  createdAt: string;
+}
+
+export interface LoginHistoryItem {
+  id: string;
+  authMethod: string;
+  status: string;
+  failureReason?: string | null;
+  ipAddress: string;
+  deviceName: string;
+  createdAt: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -19,7 +46,13 @@ export interface User {
   role: string;
   avatarUrl?: string | null;
   isVerified?: boolean;
+  isEmailVerified?: boolean;
+  isPhoneVerified?: boolean;
+  status?: string;
   authProvider?: string;
+  connectedAccounts?: ConnectedAccount[];
+  createdAt?: string;
+  lastLoginAt?: string | null;
 }
 
 export interface Organization {

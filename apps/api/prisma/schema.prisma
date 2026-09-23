@@ -19,12 +19,16 @@ model User {
   role            String       @default("BUSINESS_OWNER")
   avatarUrl       String?
   isVerified      Boolean      @default(false)
+  isEmailVerified Boolean      @default(false)
+  isPhoneVerified Boolean      @default(false)
+  status          String       @default("ACTIVE") // ACTIVE, SUSPENDED, DEACTIVATED
   authProvider    String       @default("LOCAL") // LOCAL, GOOGLE, OTP
   otpCode         String?
   otpExpires      DateTime?
   googleId        String?
   resetToken      String?
   resetExpires    DateTime?
+  lastLoginAt     DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -34,6 +38,12 @@ model User {
   leadEvents      LeadEvent[]
   auditLogs       AuditLog[]
   notifications   Notification[]
+  authProviders   UserAuthProvider[]
+  sessions        Session[]
+  otpChallenges   OtpChallenge[]
+  emailTokens     EmailVerificationToken[]
+  resetTokens     PasswordResetToken[]
+  loginAttempts   LoginAttempt[]
 }
 
 model Organization {
@@ -442,3 +452,108 @@ model Payment {
   organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   subscription    Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 }
+
+model UserAuthProvider {
+  id              String       @id @default(cuid())
+  userId          String
+  provider        String       // GOOGLE, GITHUB, APPLE
+  providerUserId  String
+  providerEmail   String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}
+
+model Session {
+  id                String       @id @default(cuid())
+  userId            String
+  sessionTokenHash  String       @unique
+  ipAddress         String?
+  userAgent         String?
+  deviceName        String?
+  browser           String?
+  os                String?
+  isRevoked         Boolean      @default(false)
+  revokedAt         DateTime?
+  lastActiveAt      DateTime     @default(now())
+  expiresAt         DateTime
+  createdAt         DateTime     @default(now())
+
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionTokenHash])
+}
+
+model OtpChallenge {
+  id              String       @id @default(cuid())
+  userId          String?
+  phone           String
+  otpHash         String
+  purpose         String       @default("LOGIN") // LOGIN, VERIFY_PHONE, REGISTER, PASSWORD_RESET
+  attempts        Int          @default(0)
+  maxAttempts     Int          @default(5)
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  ipAddress       String?
+  createdAt       DateTime     @default(now())
+
+  user            User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([phone])
+  @@index([userId])
+}
+
+model EmailVerificationToken {
+  id              String       @id @default(cuid())
+  userId          String
+  email           String
+  tokenHash       String       @unique
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime     @default(now())
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model PasswordResetToken {
+  id              String       @id @default(cuid())
+  userId          String
+  tokenHash       String       @unique
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  ipAddress       String?
+  createdAt       DateTime     @default(now())
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model LoginAttempt {
+  id              String       @id @default(cuid())
+  userId          String?
+  identifier      String       // email or phone
+  authMethod      String       // PASSWORD, GOOGLE, OTP
+  status          String       // SUCCESS, FAILED, BLOCKED
+  failureReason   String?
+  ipAddress       String?
+  userAgent       String?
+  deviceName      String?
+  createdAt       DateTime     @default(now())
+
+  user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([identifier])
+  @@index([ipAddress])
+  @@index([userId])
+}
+

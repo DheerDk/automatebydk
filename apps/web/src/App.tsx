@@ -10,6 +10,11 @@ import { DashboardLayout } from './components/layout/DashboardLayout';
 import { LandingPage } from './pages/landing/LandingPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
+import { GoogleCallbackPage } from './pages/auth/GoogleCallbackPage';
+import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
+import { VerifyEmailPage } from './pages/auth/VerifyEmailPage';
+
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { InboxPage } from './pages/inbox/InboxPage';
 import { LeadsPage } from './pages/leads/LeadsPage';
@@ -21,6 +26,8 @@ import { AiTrainingPage } from './pages/ai/AiTrainingPage';
 import { AiSandboxPage } from './pages/ai/AiSandboxPage';
 import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
+import { SecuritySettingsPage } from './pages/settings/SecuritySettingsPage';
+import { ProfilePage } from './pages/profile/ProfilePage';
 import { SuperAdminPage } from './pages/superadmin/SuperAdminPage';
 
 const queryClient = new QueryClient();
@@ -37,6 +44,11 @@ export const App: React.FC = () => {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/signup" element={<RegisterPage />} />
+                <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/verify-email" element={<VerifyEmailPage />} />
 
                 {/* Protected Dashboard Routes */}
                 <Route path="/dashboard" element={<DashboardLayout />}>
@@ -52,6 +64,17 @@ export const App: React.FC = () => {
                   <Route path="ai/sandbox" element={<AiSandboxPage />} />
                   <Route path="analytics" element={<AnalyticsPage />} />
                   <Route path="settings" element={<SettingsPage />} />
+                  <Route path="security" element={<SecuritySettingsPage />} />
+                  <Route path="profile" element={<ProfilePage />} />
+                </Route>
+
+                {/* Direct paths for profile & settings */}
+                <Route path="/profile" element={<DashboardLayout />}>
+                  <Route index element={<ProfilePage />} />
+                </Route>
+                <Route path="/settings" element={<DashboardLayout />}>
+                  <Route index element={<SettingsPage />} />
+                  <Route path="security" element={<SecuritySettingsPage />} />
                 </Route>
 
                 {/* Super Admin Platform Route */}

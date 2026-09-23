@@ -1,651 +1,94 @@
 import { Request, Response, NextFunction } from 'express';
+import { ProductionAuthService } from '../services/auth.service.js';
+import { GoogleOAuthService } from '../services/providers/google.service.js';
 import { prisma } from '../utils/prisma.js';
-import { hashPassword, comparePassword, signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/token.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { AuditService } from '../services/audit.service.js';
+import { SmsService } from '../services/providers/sms.service.js';
+import { EmailService } from '../services/providers/email.service.js';
 import { UserRole } from '@chatflow/shared';
 
 export class AuthController {
   /**
-   * Send 6-digit OTP to email / phone for verification or passwordless login
-   */
-  public static async sendOtp(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { email, phone, purpose } = req.body;
-      if (!email && !phone) {
-        throw new AppError('Email or phone number is required to send OTP', 400);
-      }
-
-      // Generate secure 6-digit OTP code
-      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
-
-      if (email) {
-        const user = await prisma.user.findUnique({
-          where: { email: email.toLowerCase() },
-        });
-
-        if (user) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { otpCode, otpExpires },
-          });
-        }
-      }
-
-      console.log(`[AUTH OTP] Generated OTP for ${email || phone} (${purpose || 'verification'}): ${otpCode}`);
-
-      return res.json({
-        success: true,
-        message: `OTP code sent successfully to ${email || phone}`,
-        data: {
-          otpExpires: otpExpires.toISOString(),
-          previewOtp: otpCode,
-        },
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  /**
-   * Verify OTP and optionally log user in or return validation token
-   */
-  public static async verifyOtp(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { email, phone, otp } = req.body;
-      if (!otp) {
-        throw new AppError('OTP code is required', 400);
-      }
-
-      if (email) {
-        const user = await prisma.user.findUnique({
-          where: { email: email.toLowerCase() },
-          include: {
-            memberships: {
-              include: {
-                organization: {
-                  include: {
-                    subscription: true,
-                  },
-                },
-              },
-            },
-          },
-        });
-
-        const isValid =
-          (user && user.otpCode === otp && user.otpExpires && user.otpExpires > new Date()) ||
-          otp === '123456' ||
-          otp === '654321';
-
-        if (!isValid) {
-          throw new AppError('Invalid or expired OTP code. Please try again.', 400, 'INVALID_OTP');
-        }
-
-        if (user) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { otpCode: null, otpExpires: null, isVerified: true },
-          });
-
-          const primaryMembership = user.memberships[0];
-          const organizationId = primaryMembership?.organizationId;
-          const org = primaryMembership?.organization;
-
-          const tokenPayload = {
-            userId: user.id,
-            email: user.email,
-            role: (primaryMembership?.role as UserRole) || (user.role as UserRole),
-            organizationId,
-          };
-
-          const accessToken = signAccessToken(tokenPayload);
-          const refreshToken = signRefreshToken(tokenPayload);
-
-          return res.json({
-            success: true,
-            message: 'OTP verified successfully',
-            data: {
-              user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                isVerified: true,
-                avatarUrl: user.avatarUrl,
-              },
-              organizations: (user.memberships || []).map((m) => ({
-                id: m.organization?.id,
-                name: m.organization?.name,
-                slug: m.organization?.slug,
-                role: m.role,
-                status: m.organization?.status,
-                subscription: m.organization?.subscription,
-              })),
-              currentOrganization: org ? {
-                id: org.id,
-                name: org.name,
-                slug: org.slug,
-                role: primaryMembership?.role || user.role,
-                status: org.status,
-                subscription: org.subscription,
-              } : null,
-              accessToken,
-              refreshToken,
-            },
-          });
-        }
-      }
-
-      if (otp === '123456' || otp.length === 6) {
-        return res.json({
-          success: true,
-          message: 'OTP validated successfully',
-          data: { verified: true },
-        });
-      }
-
-      throw new AppError('Invalid OTP code', 400);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  /**
-   * Google OAuth / One-Tap Authentication
-   */
-  public static async googleAuth(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { email, name, avatarUrl, googleId, planTier, billingCycle, businessName, phone } = req.body;
-
-      if (!email) {
-        throw new AppError('Google authentication email is required', 400);
-      }
-
-      const normalizedEmail = email.toLowerCase();
-      let user = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
-        include: {
-          memberships: {
-            include: {
-              organization: {
-                include: {
-                  subscription: true,
-                  settings: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      // If user exists, log in
-      if (user) {
-        if (!user.googleId && googleId) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { googleId, avatarUrl: avatarUrl || user.avatarUrl, authProvider: 'GOOGLE', isVerified: true },
-          });
-        }
-
-        const primaryMembership = user.memberships[0];
-        const org = primaryMembership?.organization;
-
-        const tokenPayload = {
-          userId: user.id,
-          email: user.email,
-          role: (primaryMembership?.role as UserRole) || (user.role as UserRole),
-          organizationId: org?.id,
-        };
-
-        const accessToken = signAccessToken(tokenPayload);
-        const refreshToken = signRefreshToken(tokenPayload);
-
-        return res.json({
-          success: true,
-          message: 'Signed in with Google successfully',
-          data: {
-            user: {
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              role: user.role,
-              isVerified: true,
-              avatarUrl: user.avatarUrl || avatarUrl,
-            },
-            organizations: (user.memberships || []).map((m) => ({
-              id: m.organization?.id,
-              name: m.organization?.name,
-              slug: m.organization?.slug,
-              role: m.role,
-              status: m.organization?.status,
-              subscription: m.organization?.subscription,
-            })),
-            currentOrganization: org ? {
-              id: org.id,
-              name: org.name,
-              slug: org.slug,
-              role: primaryMembership?.role || user.role,
-              status: org.status,
-              subscription: org.subscription,
-            } : null,
-            accessToken,
-            refreshToken,
-          },
-        });
-      }
-
-      // If user doesn't exist, create user + organization with selected plan
-      const finalBusinessName = businessName || `${name || 'My'} Store`;
-      let baseSlug = finalBusinessName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-      if (!baseSlug) baseSlug = 'store';
-      let slug = baseSlug;
-      let counter = 1;
-      while (await prisma.organization.findUnique({ where: { slug } })) {
-        slug = `${baseSlug}-${counter}`;
-        counter++;
-      }
-
-      const randomPass = await hashPassword(Math.random().toString(36).substring(2, 15));
-      const chosenTier = planTier || 'STARTER';
-      const cycle = billingCycle || 'MONTHLY';
-      const periodDays = cycle === 'YEARLY' ? 365 : 30;
-
-      const result = await prisma.$transaction(async (tx) => {
-        const newUser = await tx.user.create({
-          data: {
-            email: normalizedEmail,
-            name: name || 'Google User',
-            phone: phone || null,
-            password: randomPass,
-            role: 'BUSINESS_OWNER',
-            avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${normalizedEmail}`,
-            authProvider: 'GOOGLE',
-            googleId: googleId || `google_${Date.now()}`,
-            isVerified: true,
-          },
-        });
-
-        const newOrg = await tx.organization.create({
-          data: {
-            name: finalBusinessName,
-            slug,
-            category: 'Retail & E-commerce',
-            status: 'ACTIVE',
-            isVerified: true,
-            memberships: {
-              create: {
-                userId: newUser.id,
-                role: 'BUSINESS_OWNER',
-              },
-            },
-            settings: {
-              create: {
-                currency: 'INR',
-                welcomeMessage: `👋 Welcome to ${finalBusinessName}!\n\n1️⃣ Browse Products\n2️⃣ Search a Product\n3️⃣ Offers & Deals\n4️⃣ Talk to Support`,
-                aiAutoReplyEnabled: true,
-              },
-            },
-            whatsappAccount: {
-              create: {
-                phoneNumberId: 'pending_setup',
-                businessAccountId: 'pending_setup',
-                accessToken: 'pending_setup',
-                verifyToken: 'chatflow_webhook_verify_token_secure_xyz_987',
-                status: 'DISCONNECTED',
-              },
-            },
-            subscription: {
-              create: {
-                planTier: chosenTier,
-                status: 'ACTIVE',
-                billingCycle: cycle,
-                paymentMethod: 'GOOGLE_PAY',
-                currentPeriodStart: new Date(),
-                currentPeriodEnd: new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000),
-              },
-            },
-            payments: {
-              create: {
-                amount: chosenTier === 'PRO' ? (cycle === 'YEARLY' ? 57590 : 5999) : (chosenTier === 'GROWTH' ? (cycle === 'YEARLY' ? 28790 : 2999) : 1499),
-                currency: 'INR',
-                status: 'COMPLETED',
-                paymentMethod: 'GOOGLE_PAY',
-                planTier: chosenTier,
-                invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
-                transactionId: `TXN-GGL-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
-              },
-            },
-          },
-          include: {
-            subscription: true,
-          },
-        });
-
-        return { user: newUser, organization: newOrg };
-      });
-
-      const tokenPayload = {
-        userId: result.user.id,
-        email: result.user.email,
-        role: UserRole.BUSINESS_OWNER,
-        organizationId: result.organization.id,
-      };
-
-      const accessToken = signAccessToken(tokenPayload);
-      const refreshToken = signRefreshToken(tokenPayload);
-
-      return res.status(201).json({
-        success: true,
-        message: 'Google account created and subscribed successfully',
-        data: {
-          user: {
-            id: result.user.id,
-            name: result.user.name,
-            email: result.user.email,
-            role: result.user.role,
-            isVerified: true,
-            avatarUrl: result.user.avatarUrl,
-          },
-          organization: {
-            id: result.organization.id,
-            name: result.organization.name,
-            slug: result.organization.slug,
-            status: result.organization.status,
-            subscription: result.organization.subscription,
-          },
-          accessToken,
-          refreshToken,
-        },
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  /**
-   * Real-World SaaS Registration with Plan Selection, Payment Confirmation, & Business Onboarding
+   * Register a new user account + default workspace
    */
   public static async register(req: Request, res: Response, next: NextFunction) {
     try {
       const {
-        businessName,
-        ownerName,
         email,
-        phone,
         password,
-        planTier = 'STARTER',
-        billingCycle = 'MONTHLY',
-        paymentMethod = 'UPI',
-        transactionId,
-        businessCategory = 'Retail & E-commerce',
-        currency = 'INR',
-        welcomeMessage,
+        name,
+        phone,
+        businessName,
+        businessCategory,
+        planTier,
+        billingCycle,
       } = req.body;
 
-      if (!email || !password || !businessName || !ownerName) {
-        throw new AppError('Missing required registration fields', 400);
-      }
-
-      // Check if user already exists
-      const existingUser = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() },
-      });
-
-      if (existingUser) {
-        throw new AppError('An account with this email already exists. Please sign in.', 409, 'EMAIL_EXISTS');
-      }
-
-      // Generate organization slug
-      let baseSlug = businessName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-      if (!baseSlug) baseSlug = 'store';
-      let slug = baseSlug;
-      let counter = 1;
-      while (await prisma.organization.findUnique({ where: { slug } })) {
-        slug = `${baseSlug}-${counter}`;
-        counter++;
-      }
-
-      const passwordHash = await hashPassword(password);
-      const isYearly = billingCycle === 'YEARLY';
-      const periodDays = isYearly ? 365 : 30;
-
-      // Plan pricing mapping
-      const pricingMap: Record<string, { monthly: number; yearly: number }> = {
-        FREE: { monthly: 0, yearly: 0 },
-        STARTER: { monthly: 1499, yearly: 14390 },
-        GROWTH: { monthly: 2999, yearly: 28790 },
-        PRO: { monthly: 5999, yearly: 57590 },
-        ENTERPRISE: { monthly: 12999, yearly: 124790 },
-      };
-
-      const planAmount = pricingMap[planTier]
-        ? isYearly ? pricingMap[planTier].yearly : pricingMap[planTier].monthly
-        : 1499;
-
-      const generatedTxnId = transactionId || `TXN-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
-
-      // Create user, organization, membership, settings, subscription, and payment in a transaction
-      const result = await prisma.$transaction(async (tx) => {
-        const user = await tx.user.create({
-          data: {
-            email: email.toLowerCase(),
-            name: ownerName,
-            phone: phone || null,
-            password: passwordHash,
-            role: 'BUSINESS_OWNER',
-            isVerified: true,
-            authProvider: 'LOCAL',
-          },
-        });
-
-        const organization = await tx.organization.create({
-          data: {
-            name: businessName,
-            slug,
-            category: businessCategory,
-            status: 'ACTIVE',
-            isVerified: false,
-            memberships: {
-              create: {
-                userId: user.id,
-                role: 'BUSINESS_OWNER',
-              },
-            },
-            settings: {
-              create: {
-                currency,
-                phone: phone || null,
-                email: email.toLowerCase(),
-                welcomeMessage:
-                  welcomeMessage ||
-                  `👋 Welcome to ${businessName}!\n\n1️⃣ Browse Products\n2️⃣ Search a Product\n3️⃣ Offers & Deals\n4️⃣ Talk to Support\n\nReply with a number to begin.`,
-                aiAutoReplyEnabled: true,
-              },
-            },
-            whatsappAccount: {
-              create: {
-                phoneNumberId: 'pending_setup',
-                businessAccountId: 'pending_setup',
-                accessToken: 'pending_setup',
-                verifyToken: 'chatflow_webhook_verify_token_secure_xyz_987',
-                status: 'DISCONNECTED',
-              },
-            },
-            subscription: {
-              create: {
-                planTier,
-                status: 'ACTIVE',
-                billingCycle,
-                paymentMethod,
-                currentPeriodStart: new Date(),
-                currentPeriodEnd: new Date(Date.now() + periodDays * 24 * 60 * 60 * 1000),
-              },
-            },
-            payments: {
-              create: {
-                amount: planAmount,
-                currency,
-                status: 'COMPLETED',
-                paymentMethod,
-                planTier,
-                invoiceNumber,
-                transactionId: generatedTxnId,
-              },
-            },
-          },
-          include: {
-            subscription: true,
-            settings: true,
-          },
-        });
-
-        return { user, organization };
-      });
-
-      const tokenPayload = {
-        userId: result.user.id,
-        email: result.user.email,
-        role: UserRole.BUSINESS_OWNER,
-        organizationId: result.organization.id,
-      };
-
-      const accessToken = signAccessToken(tokenPayload);
-      const refreshToken = signRefreshToken(tokenPayload);
-
-      await AuditService.log({
-        organizationId: result.organization.id,
-        userId: result.user.id,
-        action: 'USER_REGISTERED_SUBSCRIPTION',
-        entityType: 'ORGANIZATION',
-        entityId: result.organization.id,
-        details: { businessName, email, planTier, billingCycle, amount: planAmount, transactionId: generatedTxnId },
+      const result = await ProductionAuthService.registerUser({
+        email,
+        password,
+        name: name || businessName || 'Store Owner',
+        phone,
+        businessName,
+        businessCategory,
+        planTier,
+        billingCycle,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
       });
 
+      // Set session cookie if in browser context
+      res.cookie('chatflow_session', result.session.sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
       return res.status(201).json({
         success: true,
-        message: 'Account created and subscription activated successfully',
-        data: {
-          user: {
-            id: result.user.id,
-            name: result.user.name,
-            email: result.user.email,
-            role: result.user.role,
-            isVerified: result.user.isVerified,
-          },
-          organization: {
-            id: result.organization.id,
-            name: result.organization.name,
-            slug: result.organization.slug,
-            category: result.organization.category,
-            status: result.organization.status,
-            isVerified: result.organization.isVerified,
-            subscription: result.organization.subscription,
-          },
-          accessToken,
-          refreshToken,
-        },
+        message: 'Account and workspace created successfully. Please check your email to verify your account.',
+        data: result,
       });
     } catch (error) {
       next(error);
     }
   }
 
+  /**
+   * Email and password login
+   */
   public static async login(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email, password } = req.body;
+      const { email, password, rememberMe } = req.body;
 
-      const user = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() },
-        include: {
-          memberships: {
-            include: {
-              organization: {
-                include: {
-                  subscription: true,
-                  settings: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!user) {
-        throw new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS');
-      }
-
-      const isMatch = await comparePassword(password, user.password);
-      if (!isMatch) {
-        throw new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS');
-      }
-
-      // Pick primary organization
-      const primaryMembership = user.memberships[0];
-      const organizationId = primaryMembership?.organizationId;
-      const org = primaryMembership?.organization;
-
-      // Check if suspended
-      if (org && org.status === 'SUSPENDED') {
-        throw new AppError('This business account has been suspended. Please contact platform support.', 403, 'ACCOUNT_SUSPENDED');
-      }
-
-      const tokenPayload = {
-        userId: user.id,
-        email: user.email,
-        role: (primaryMembership?.role as UserRole) || (user.role as UserRole),
-        organizationId,
-      };
-
-      const accessToken = signAccessToken(tokenPayload);
-      const refreshToken = signRefreshToken(tokenPayload);
-
-      await AuditService.log({
-        organizationId,
-        userId: user.id,
-        action: 'USER_LOGIN',
-        entityType: 'USER',
-        entityId: user.id,
+      const result = await ProductionAuthService.loginWithPassword({
+        email,
+        password,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
+        rememberMe: Boolean(rememberMe),
+      });
+
+      res.cookie('chatflow_session', result.session.sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: (rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000,
       });
 
       return res.json({
         success: true,
         message: 'Logged in successfully',
         data: {
-          user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            avatarUrl: user.avatarUrl,
-            isVerified: user.isVerified,
-          },
-          organizations: (user.memberships || []).map((m) => ({
-            id: m.organization?.id,
-            name: m.organization?.name,
-            slug: m.organization?.slug,
-            role: m.role,
-            status: m.organization?.status,
-            isVerified: m.organization?.isVerified,
-            subscription: m.organization?.subscription,
-          })),
-          currentOrganization: org ? {
-            id: org.id,
-            name: org.name,
-            slug: org.slug,
-            role: primaryMembership?.role || user.role,
-            status: org.status,
-            isVerified: org.isVerified,
-            subscription: org.subscription,
-          } : null,
-          accessToken,
-          refreshToken,
+          user: result.user,
+          organizations: result.organizations,
+          currentOrganization: result.currentOrganization,
+          accessToken: result.session.accessToken,
+          refreshToken: result.session.refreshToken,
+          sessionToken: result.session.sessionToken,
+          sessionId: result.session.sessionId,
         },
       });
     } catch (error) {
@@ -653,38 +96,288 @@ export class AuthController {
     }
   }
 
-  public static async refresh(req: Request, res: Response, next: NextFunction) {
+  /**
+   * Generate official Google OAuth 2.0 Authorization URL
+   */
+  public static async getGoogleAuthUrl(req: Request, res: Response, next: NextFunction) {
     try {
-      const { refreshToken } = req.body;
-      if (!refreshToken) {
-        throw new AppError('Refresh token is required', 400, 'TOKEN_REQUIRED');
+      const isConfigured = GoogleOAuthService.isConfigured();
+      if (!isConfigured) {
+        return res.json({
+          success: false,
+          isConfigured: false,
+          message: 'Google Sign-In is not configured on this server yet.',
+        });
       }
 
-      const payload = verifyRefreshToken(refreshToken);
-      const user = await prisma.user.findUnique({
-        where: { id: payload.userId },
+      const state = (req.query.state as string) || undefined;
+      const redirectUri = (req.query.redirectUri as string) || undefined;
+      const url = GoogleOAuthService.getAuthorizationUrl(state, redirectUri);
+
+      return res.json({
+        success: true,
+        isConfigured: true,
+        url,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Official Google OAuth 2.0 / OpenID Connect callback exchange
+   */
+  public static async googleAuth(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { code, idToken, redirectUri } = req.body;
+
+      const result = await ProductionAuthService.authenticateGoogle({
+        code,
+        idToken,
+        redirectUri,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
       });
 
-      if (!user) {
-        throw new AppError('User not found', 401, 'USER_NOT_FOUND');
-      }
-
-      const newAccessToken = signAccessToken({
-        userId: user.id,
-        email: user.email,
-        role: payload.role,
-        organizationId: payload.organizationId,
+      res.cookie('chatflow_session', result.session.sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 30 * 24 * 60 * 60 * 1000,
       });
 
       return res.json({
         success: true,
-        data: { accessToken: newAccessToken },
+        message: 'Authenticated with Google successfully',
+        data: {
+          user: result.user,
+          organizations: result.organizations,
+          currentOrganization: result.currentOrganization,
+          accessToken: result.session.accessToken,
+          refreshToken: result.session.refreshToken,
+          sessionToken: result.session.sessionToken,
+          sessionId: result.session.sessionId,
+        },
       });
     } catch (error) {
-      next(new AppError('Invalid or expired refresh token', 401, 'INVALID_REFRESH_TOKEN'));
+      next(error);
     }
   }
 
+  /**
+   * Request Phone OTP (dispatched via SMS with cryptographic challenge)
+   */
+  public static async sendOtp(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { phone, purpose } = req.body;
+      if (!phone) {
+        throw new AppError('Phone number is required to send verification code.', 400, 'PHONE_REQUIRED');
+      }
+
+      const result = await ProductionAuthService.requestPhoneOtp({
+        phone,
+        purpose: purpose || 'LOGIN',
+        ipAddress: req.ip,
+      });
+
+      return res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Verify Phone OTP and create authenticated session
+   */
+  public static async verifyOtp(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { phone, otp, purpose } = req.body;
+      if (!phone || !otp) {
+        throw new AppError('Phone number and 6-digit OTP code are required.', 400, 'INVALID_INPUT');
+      }
+
+      const result = await ProductionAuthService.verifyPhoneOtp({
+        phone,
+        otp,
+        purpose: purpose || 'LOGIN',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
+      res.cookie('chatflow_session', result.session.sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
+      return res.json({
+        success: true,
+        message: 'Phone number verified successfully',
+        data: {
+          user: result.user,
+          organizations: result.organizations,
+          currentOrganization: result.currentOrganization,
+          accessToken: result.session.accessToken,
+          refreshToken: result.session.refreshToken,
+          sessionToken: result.session.sessionToken,
+          sessionId: result.session.sessionId,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Verify Email Token
+   */
+  public static async verifyEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { token } = req.body;
+      if (!token) {
+        throw new AppError('Verification token is required.', 400, 'TOKEN_REQUIRED');
+      }
+
+      const result = await ProductionAuthService.verifyEmailToken(token);
+      return res.json({
+        success: true,
+        message: 'Your email address has been verified successfully.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Resend Verification Email
+   */
+  public static async resendVerificationEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { email } = req.body;
+      const normalizedEmail = email?.toLowerCase().trim() || req.user?.email;
+
+      if (!normalizedEmail) {
+        throw new AppError('Email address is required.', 400, 'EMAIL_REQUIRED');
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+      });
+
+      if (!user) {
+        return res.json({
+          success: true,
+          message: 'If an account exists with this email, a verification link has been sent.',
+        });
+      }
+
+      if (user.isEmailVerified) {
+        return res.json({
+          success: true,
+          message: 'Your email address is already verified.',
+        });
+      }
+
+      // Check recent tokens (cooldown 2 minutes)
+      const recent = await prisma.emailVerificationToken.findFirst({
+        where: {
+          userId: user.id,
+          createdAt: { gte: new Date(Date.now() - 2 * 60 * 1000) },
+        },
+      });
+
+      if (recent) {
+        throw new AppError('Please wait 2 minutes before requesting another verification email.', 429, 'RATE_LIMITED');
+      }
+
+      const rawVerifyToken = (await import('crypto')).randomBytes(32).toString('hex');
+      const verifyTokenHash = (await import('crypto')).createHash('sha256').update(rawVerifyToken).digest('hex');
+
+      await prisma.emailVerificationToken.create({
+        data: {
+          userId: user.id,
+          email: user.email,
+          tokenHash: verifyTokenHash,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+
+      await EmailService.sendVerificationEmail(user.email, user.name, rawVerifyToken);
+
+      return res.json({
+        success: true,
+        message: 'A fresh verification link has been sent to your email address.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Request Password Reset Link (Enumeration-proof)
+   */
+  public static async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { email } = req.body;
+      const result = await ProductionAuthService.requestPasswordReset(email, req.ip);
+      return res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Reset Password with Token
+   */
+  public static async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { token, newPassword } = req.body;
+      if (!token || !newPassword) {
+        throw new AppError('Reset token and new password are required.', 400, 'INVALID_INPUT');
+      }
+
+      const result = await ProductionAuthService.resetPasswordWithToken({
+        token,
+        newPassword,
+        ipAddress: req.ip,
+      });
+
+      return res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Change Password (while authenticated)
+   */
+  public static async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new AppError('Unauthorized', 401);
+
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        throw new AppError('Current password and new password are required.', 400, 'INVALID_INPUT');
+      }
+
+      const result = await ProductionAuthService.changePassword({
+        userId: req.user.id,
+        currentPassword,
+        newPassword,
+        currentSessionId: req.sessionId,
+      });
+
+      return res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Retrieve Authenticated User Profile & Restored Workspace Data
+   */
   public static async getMe(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) {
@@ -701,6 +394,18 @@ export class AuthController {
           role: true,
           avatarUrl: true,
           isVerified: true,
+          isEmailVerified: true,
+          isPhoneVerified: true,
+          status: true,
+          lastLoginAt: true,
+          createdAt: true,
+          authProviders: {
+            select: {
+              provider: true,
+              providerEmail: true,
+              createdAt: true,
+            },
+          },
           memberships: {
             include: {
               organization: {
@@ -723,13 +428,19 @@ export class AuthController {
         },
       });
 
-      if (!user) throw new AppError('User not found', 404);
+      if (!user || user.status === 'DELETED') {
+        throw new AppError('User account not found or has been removed.', 404, 'USER_NOT_FOUND');
+      }
 
-      const currentOrg = req.organizationId
-        ? user.memberships.find((m) => m.organization.id === req.organizationId)?.organization
-        : user.memberships[0]?.organization;
+      const targetOrgId = req.organizationId;
+      const currentOrgMembership = targetOrgId
+        ? user.memberships.find((m) => m.organization?.id === targetOrgId)
+        : user.memberships[0];
+
+      const currentOrg = currentOrgMembership?.organization || user.memberships[0]?.organization || null;
 
       return res.json({
+        authenticated: true,
         success: true,
         data: {
           user: {
@@ -740,19 +451,233 @@ export class AuthController {
             role: user.role,
             avatarUrl: user.avatarUrl,
             isVerified: user.isVerified,
+            isEmailVerified: user.isEmailVerified,
+            isPhoneVerified: user.isPhoneVerified,
+            status: user.status,
+            lastLoginAt: user.lastLoginAt,
+            createdAt: user.createdAt,
+            connectedAccounts: user.authProviders.map((p) => ({
+              provider: p.provider,
+              email: p.providerEmail,
+              connectedAt: p.createdAt,
+            })),
           },
           organizations: user.memberships.map((m) => ({
-            id: m.organization.id,
-            name: m.organization.name,
-            slug: m.organization.slug,
+            id: m.organization?.id,
+            name: m.organization?.name,
+            slug: m.organization?.slug,
             role: m.role,
-            status: m.organization.status,
-            isVerified: m.organization.isVerified,
-            subscription: m.organization.subscription,
+            status: m.organization?.status,
+            isVerified: m.organization?.isVerified,
+            subscription: m.organization?.subscription,
           })),
-          currentOrganization: currentOrg || null,
+          currentOrganization: currentOrg
+            ? {
+                id: currentOrg.id,
+                name: currentOrg.name,
+                slug: currentOrg.slug,
+                role: currentOrgMembership?.role || user.role,
+                status: currentOrg.status,
+                isVerified: currentOrg.isVerified,
+                settings: currentOrg.settings,
+                whatsappAccount: currentOrg.whatsappAccount,
+                subscription: currentOrg.subscription,
+              }
+            : null,
+          sessionId: req.sessionId,
         },
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update Profile Information
+   */
+  public static async updateProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new AppError('Unauthorized', 401);
+
+      const { name, phone, avatarUrl } = req.body;
+      const normalizedPhone = phone ? SmsService.normalizePhoneNumber(phone) : undefined;
+
+      const updated = await prisma.user.update({
+        where: { id: req.user.id },
+        data: {
+          ...(name ? { name: name.trim() } : {}),
+          ...(phone !== undefined ? { phone: normalizedPhone, isPhoneVerified: phone ? false : false } : {}),
+          ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          avatarUrl: true,
+          role: true,
+          isEmailVerified: true,
+          isPhoneVerified: true,
+        },
+      });
+
+      await AuditService.log({
+        userId: req.user.id,
+        action: 'PROFILE_UPDATED',
+        entityType: 'USER',
+        entityId: req.user.id,
+        details: { name, phone: normalizedPhone },
+      });
+
+      return res.json({
+        success: true,
+        message: 'Profile updated successfully',
+        data: { user: updated },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Active Sessions List (Device Management)
+   */
+  public static async getActiveSessions(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new AppError('Unauthorized', 401);
+
+      const sessions = await ProductionAuthService.getUserSessions(req.user.id, req.sessionId);
+      return res.json({
+        success: true,
+        data: { sessions },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Revoke Single Device Session
+   */
+  public static async revokeSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new AppError('Unauthorized', 401);
+
+      const { sessionId } = req.params;
+      const result = await ProductionAuthService.revokeSession(sessionId, req.user.id);
+      return res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Revoke All Other Devices
+   */
+  public static async logoutOtherDevices(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new AppError('Unauthorized', 401);
+
+      const result = await ProductionAuthService.revokeAllUserSessions(req.user.id, req.sessionId);
+      return res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Logout Current Device
+   */
+  public static async logout(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (req.user && req.sessionId) {
+        await ProductionAuthService.revokeSession(req.sessionId, req.user.id).catch(() => {});
+        await AuditService.log({
+          userId: req.user.id,
+          action: 'USER_LOGOUT',
+          entityType: 'SESSION',
+          entityId: req.sessionId,
+        });
+      }
+
+      res.clearCookie('chatflow_session');
+      return res.json({
+        success: true,
+        message: 'Logged out successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Logout All Devices
+   */
+  public static async logoutAll(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (req.user) {
+        await ProductionAuthService.revokeAllUserSessions(req.user.id);
+      }
+
+      res.clearCookie('chatflow_session');
+      return res.json({
+        success: true,
+        message: 'All active sessions have been logged out.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Login History & Security Audit Logs
+   */
+  public static async getLoginHistory(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new AppError('Unauthorized', 401);
+
+      const attempts = await prisma.loginAttempt.findMany({
+        where: {
+          OR: [
+            { userId: req.user.id },
+            { identifier: req.user.email.toLowerCase() },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          history: attempts.map((a) => ({
+            id: a.id,
+            authMethod: a.authMethod,
+            status: a.status,
+            failureReason: a.failureReason,
+            ipAddress: a.ipAddress || 'Unknown IP',
+            deviceName: a.deviceName || 'Unknown Device',
+            createdAt: a.createdAt,
+          })),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Account Deletion
+   */
+  public static async deleteAccount(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) throw new AppError('Unauthorized', 401);
+
+      const { passwordConfirmation } = req.body;
+      const result = await ProductionAuthService.deleteAccount(req.user.id, passwordConfirmation);
+
+      res.clearCookie('chatflow_session');
+      return res.json(result);
     } catch (error) {
       next(error);
     }

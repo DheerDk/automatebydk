@@ -166,6 +166,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuToggle, onOpenSimulator })
                   {user?.role}
                 </span>
               </div>
+              <div className="py-1 border-b border-slate-100">
+                <a
+                  href="/dashboard/profile"
+                  onClick={() => setIsUserDropdownOpen(false)}
+                  className="block px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  My Profile
+                </a>
+                <a
+                  href="/dashboard/security"
+                  onClick={() => setIsUserDropdownOpen(false)}
+                  className="block px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Security &amp; Device Sessions
+                </a>
+              </div>
               <button
                 onClick={logout}
                 className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 mt-1"
