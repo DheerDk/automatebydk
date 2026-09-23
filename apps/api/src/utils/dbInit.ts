@@ -59,6 +59,32 @@ export async function ensureDatabaseReady() {
       );
     `).catch((e) => logger.warn('Payment table creation note:', e.message));
 
+    // Ensure Subscription columns
+    const subscriptionColumns = [
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "planTier" TEXT DEFAULT 'FREE';`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'ACTIVE';`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "billingCycle" TEXT DEFAULT 'MONTHLY';`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "autoRenew" BOOLEAN DEFAULT true;`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "paymentMethod" TEXT DEFAULT 'CARD';`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "currentPeriodStart" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP;`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "currentPeriodEnd" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP;`,
+      `ALTER TABLE "Subscription" ADD COLUMN IF NOT EXISTS "cancelAtPeriodEnd" BOOLEAN DEFAULT false;`,
+    ];
+    for (const col of subscriptionColumns) {
+      await prisma.$executeRawUnsafe(col).catch(() => {});
+    }
+
+    // Ensure Payment columns
+    const paymentColumns = [
+      `ALTER TABLE "Payment" ADD COLUMN IF NOT EXISTS "subscriptionId" TEXT;`,
+      `ALTER TABLE "Payment" ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT;`,
+      `ALTER TABLE "Payment" ADD COLUMN IF NOT EXISTS "planTier" TEXT DEFAULT 'STARTER';`,
+      `ALTER TABLE "Payment" ADD COLUMN IF NOT EXISTS "paymentMethod" TEXT DEFAULT 'CARD';`,
+    ];
+    for (const col of paymentColumns) {
+      await prisma.$executeRawUnsafe(col).catch(() => {});
+    }
+
     // Ensure User columns
     const userColumns = [
       `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isVerified" BOOLEAN DEFAULT false;`,
@@ -200,15 +226,15 @@ export async function ensureDatabaseReady() {
       logger.info('✅ Super Admin account ready (admin@chatflow.ai)');
     }
 
-    // 4. Ensure StyleHub Demo Store Owner & Staff exist
-    const storeOwner = await prisma.user.findUnique({
+    // 4. Ensure StyleHub Demo Store Owner & Staff exist and have memberships
+    let ownerUser = await prisma.user.findUnique({
       where: { email: 'owner@stylehub.com' },
       include: { memberships: true },
     }).catch(() => null);
 
-    if (!storeOwner) {
-      const pass = await bcrypt.hash('Password@123', 10);
-      const ownerUser = await prisma.user.create({
+    const pass = await bcrypt.hash('Password@123', 10);
+    if (!ownerUser) {
+      ownerUser = await prisma.user.create({
         data: {
           email: 'owner@stylehub.com',
           name: 'Priya Sharma',
@@ -219,9 +245,17 @@ export async function ensureDatabaseReady() {
           isVerified: true,
           authProvider: 'LOCAL',
         },
+        include: { memberships: true },
       }).catch(() => null);
+    }
 
-      const staffUser = await prisma.user.create({
+    let staffUser = await prisma.user.findUnique({
+      where: { email: 'staff@stylehub.com' },
+      include: { memberships: true },
+    }).catch(() => null);
+
+    if (!staffUser) {
+      staffUser = await prisma.user.create({
         data: {
           email: 'staff@stylehub.com',
           name: 'Rahul Verma',
@@ -232,66 +266,100 @@ export async function ensureDatabaseReady() {
           isVerified: true,
           authProvider: 'LOCAL',
         },
+        include: { memberships: true },
+      }).catch(() => null);
+    }
+
+    if (ownerUser && staffUser) {
+      let org = await prisma.organization.findUnique({
+        where: { slug: 'stylehub' },
+        include: { subscription: true, settings: true },
       }).catch(() => null);
 
-      if (ownerUser && staffUser) {
-        let org = await prisma.organization.findUnique({ where: { slug: 'stylehub' } }).catch(() => null);
-        if (!org) {
-          org = await prisma.organization.create({
-            data: {
-              name: 'StyleHub Fashion & Lifestyle',
-              slug: 'stylehub',
-              logoUrl: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=200&auto=format&fit=crop&q=80',
-              status: 'ACTIVE',
-              isVerified: true,
-              category: 'Retail & E-commerce',
-              memberships: {
-                create: [
-                  { userId: ownerUser.id, role: 'BUSINESS_OWNER' },
-                  { userId: staffUser.id, role: 'STAFF' },
-                ],
-              },
-              settings: {
-                create: {
-                  currency: 'INR',
-                  businessHours: 'Mon-Sat: 10:00 AM - 09:00 PM, Sun: 11:00 AM - 07:00 PM',
-                  deliveryPolicy: 'Express shipping in 2-3 business days across India.',
-                  returnPolicy: 'Hassle-free 7-day return & refund guarantee.',
-                  paymentMethods: 'UPI, Credit/Debit Cards, Net Banking, and COD.',
-                  welcomeMessage: '👋 Welcome to *StyleHub Fashion & Lifestyle*!\n\n1️⃣ Browse Catalog\n2️⃣ Search Product\n3️⃣ Offers & Deals\n4️⃣ Talk to Support',
-                  aiAutoReplyEnabled: true,
-                  address: '42, Commercial Street, Bangalore - 560001',
-                  phone: '+91 98765 43210',
-                  email: 'support@stylehub.com',
-                },
-              },
-              whatsappAccount: {
-                create: {
-                  phoneNumberId: '109823485729104',
-                  businessAccountId: '209384729182394',
-                  accessToken: 'mock_meta_token_stylehub_live_2025',
-                  verifyToken: 'chatflow_webhook_verify_token_secure_xyz_987',
-                  displayPhoneNumber: '+91 98765 43210',
-                  status: 'CONNECTED',
-                },
-              },
-              subscription: {
-                create: {
-                  planTier: 'GROWTH',
-                  status: 'ACTIVE',
-                  billingCycle: 'MONTHLY',
-                  currentPeriodStart: new Date(),
-                  currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-                },
+      if (!org) {
+        org = await prisma.organization.create({
+          data: {
+            name: 'StyleHub Fashion & Lifestyle',
+            slug: 'stylehub',
+            logoUrl: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=200&auto=format&fit=crop&q=80',
+            status: 'ACTIVE',
+            isVerified: true,
+            category: 'Retail & E-commerce',
+            memberships: {
+              create: [
+                { userId: ownerUser.id, role: 'BUSINESS_OWNER' },
+                { userId: staffUser.id, role: 'STAFF' },
+              ],
+            },
+            settings: {
+              create: {
+                currency: 'INR',
+                businessHours: 'Mon-Sat: 10:00 AM - 09:00 PM, Sun: 11:00 AM - 07:00 PM',
+                deliveryPolicy: 'Express shipping in 2-3 business days across India.',
+                returnPolicy: 'Hassle-free 7-day return & refund guarantee.',
+                paymentMethods: 'UPI, Credit/Debit Cards, Net Banking, and COD.',
+                welcomeMessage: '👋 Welcome to *StyleHub Fashion & Lifestyle*!\n\n1️⃣ Browse Catalog\n2️⃣ Search Product\n3️⃣ Offers & Deals\n4️⃣ Talk to Support',
+                aiAutoReplyEnabled: true,
+                address: '42, Commercial Street, Bangalore - 560001',
+                phone: '+91 98765 43210',
+                email: 'support@stylehub.com',
               },
             },
-          }).catch((e) => {
-            logger.warn('Demo org creation note:', e.message);
-            return null;
-          });
-          logger.info('✅ Demo Organization StyleHub ready');
+            whatsappAccount: {
+              create: {
+                phoneNumberId: '109823485729104',
+                businessAccountId: '209384729182394',
+                accessToken: 'mock_meta_token_stylehub_live_2025',
+                verifyToken: 'chatflow_webhook_verify_token_secure_xyz_987',
+                displayPhoneNumber: '+91 98765 43210',
+                status: 'CONNECTED',
+              },
+            },
+            subscription: {
+              create: {
+                planTier: 'GROWTH',
+                status: 'ACTIVE',
+                billingCycle: 'MONTHLY',
+                currentPeriodStart: new Date(),
+                currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              },
+            },
+          },
+          include: { subscription: true, settings: true },
+        }).catch((e) => {
+          logger.warn('Demo org creation note:', e.message);
+          return null;
+        });
+      }
+
+      if (org) {
+        // Guarantee memberships exist
+        await prisma.membership.upsert({
+          where: { userId_organizationId: { userId: ownerUser.id, organizationId: org.id } },
+          update: {},
+          create: { userId: ownerUser.id, organizationId: org.id, role: 'BUSINESS_OWNER' },
+        }).catch(() => {});
+
+        await prisma.membership.upsert({
+          where: { userId_organizationId: { userId: staffUser.id, organizationId: org.id } },
+          update: {},
+          create: { userId: staffUser.id, organizationId: org.id, role: 'STAFF' },
+        }).catch(() => {});
+
+        if (!org.subscription) {
+          await prisma.subscription.create({
+            data: {
+              organizationId: org.id,
+              planTier: 'GROWTH',
+              status: 'ACTIVE',
+              billingCycle: 'MONTHLY',
+              currentPeriodStart: new Date(),
+              currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            },
+          }).catch(() => {});
         }
       }
+      logger.info('✅ Demo Organization StyleHub ready with active subscription and memberships');
     }
   } catch (err: any) {
     logger.warn('Database initialization warning (non-fatal):', err?.message || err);
