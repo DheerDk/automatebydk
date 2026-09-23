@@ -50,12 +50,13 @@ export const errorHandler = (
     });
   }
 
-  if (err instanceof AppError) {
-    return res.status(err.statusCode).json({
+  if (err instanceof AppError || (err as any).statusCode) {
+    const statusCode = (err as any).statusCode || 400;
+    return res.status(statusCode).json({
       success: false,
       message: err.message,
-      code: err.code || 'APP_ERROR',
-      errors: err.errors,
+      code: (err as any).code || 'APP_ERROR',
+      errors: (err as any).errors,
     });
   }
 
@@ -79,7 +80,7 @@ export const errorHandler = (
   // Generic Unhandled Error
   return res.status(500).json({
     success: false,
-    message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
+    message: err.message || 'Internal server error',
     code: 'INTERNAL_SERVER_ERROR',
   });
 };
