@@ -2,6 +2,7 @@ import { Router } from 'express';
 import authRoutes from './auth.routes.js';
 import webhookRoutes from './webhook.routes.js';
 import qrRoutes from './qr.routes.js';
+import uploadRoutes from './upload.routes.js';
 import { ProductController } from '../controllers/product.controller.js';
 import { CategoryController } from '../controllers/category.controller.js';
 import { CustomerController } from '../controllers/customer.controller.js';
@@ -19,6 +20,16 @@ import { SubscriptionController } from '../controllers/subscription.controller.j
 import { AiController } from '../controllers/ai.controller.js';
 import { authenticate, requireTenant, requireRole, requireSuperAdmin } from '../middlewares/auth.js';
 import { validateRequest } from '../middlewares/validate.js';
+import {
+  generalApiLimiter,
+  aiLimiter,
+  campaignLimiter,
+  webhookLimiter,
+} from '../middlewares/rateLimiter.js';
+import {
+  createCampaignSchema,
+  updateCampaignSchema,
+} from '../validations/campaign.validation.js';
 
 const router = Router();
 
@@ -35,14 +46,17 @@ router.get('/health', (req, res) => {
 
 // Public Auth & Webhook
 router.use('/auth', authRoutes);
-router.use('/webhooks', webhookRoutes);
+router.use('/webhooks', webhookLimiter, webhookRoutes);
 
 // Public Plans List
 router.get('/plans', SuperAdminController.listPlans);
 
-// Protected Tenant Routes (Require Authentication + Tenant Context)
+// Protected Tenant Routes (Require Authentication + Tenant Context + General API Shield)
 const tenantRouter = Router();
-tenantRouter.use(authenticate, requireTenant);
+tenantRouter.use(authenticate, requireTenant, generalApiLimiter);
+
+// Secure File Upload Engine (Images, Media, Contacts CSV)
+tenantRouter.use('/upload', uploadRoutes);
 
 // Subscription & Invoices
 tenantRouter.get('/subscription', SubscriptionController.getSubscription);
@@ -93,10 +107,10 @@ tenantRouter.put('/templates/:id', TemplateController.update);
 tenantRouter.delete('/templates/:id', TemplateController.delete);
 
 tenantRouter.get('/campaigns', CampaignController.list);
-tenantRouter.post('/campaigns', CampaignController.create);
-tenantRouter.put('/campaigns/:id', CampaignController.update);
+tenantRouter.post('/campaigns', validateRequest(createCampaignSchema), CampaignController.create);
+tenantRouter.put('/campaigns/:id', validateRequest(updateCampaignSchema), CampaignController.update);
 tenantRouter.delete('/campaigns/:id', CampaignController.delete);
-tenantRouter.post('/campaigns/:id/launch', CampaignController.launch);
+tenantRouter.post('/campaigns/:id/launch', campaignLimiter, CampaignController.launch);
 
 // Analytics
 tenantRouter.get('/analytics/dashboard', AnalyticsController.getDashboardStats);
@@ -111,12 +125,12 @@ tenantRouter.get('/organization/members', OrganizationController.getMembers);
 tenantRouter.post('/organization/members', OrganizationController.inviteMember);
 tenantRouter.delete('/organization/members/:memberId', OrganizationController.removeMember);
 
-// AI Sandbox & Test Search & Custom Business Agent Training
+// AI Sandbox & Test Search & Custom Business Agent Training (Rate Limited)
 tenantRouter.get('/ai/training', AiController.getTraining);
 tenantRouter.put('/ai/training', AiController.updateTraining);
-tenantRouter.post('/ai/test-agent', AiController.testAgent);
-tenantRouter.post('/ai/test-search', AiController.testSearch);
-tenantRouter.post('/ai/test-faq', AiController.testFaq);
+tenantRouter.post('/ai/test-agent', aiLimiter, AiController.testAgent);
+tenantRouter.post('/ai/test-search', aiLimiter, AiController.testSearch);
+tenantRouter.post('/ai/test-faq', aiLimiter, AiController.testFaq);
 
 // WhatsApp QR Code Session Routes
 tenantRouter.use('/whatsapp/qr', qrRoutes);

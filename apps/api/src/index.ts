@@ -3,7 +3,7 @@ import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
 import { errorHandler } from './middlewares/errorHandler.js';
@@ -11,15 +11,28 @@ import { SocketServer } from './sockets/index.js';
 import { JobScheduler } from './jobs/scheduler.js';
 import { BaileysService } from './services/baileys.service.js';
 import { ensureDatabaseReady } from './utils/dbInit.js';
+import { sanitizeInput } from './middlewares/sanitize.js';
+import { authLimiter } from './middlewares/rateLimiter.js';
 import apiRouter from './routes/index.js';
 
 const app = express();
 const server = http.createServer(app);
 
-// Security & Middleware
-app.use(helmet({
-  crossOriginResourcePolicy: false,
-}));
+// Security & HTTP Headers Lockdown
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    frameguard: { action: 'deny' },
+    noSniff: true,
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    dnsPrefetchControl: { allow: false },
+    hidePoweredBy: true,
+  })
+);
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -34,24 +47,37 @@ app.use(cors({
     ) {
       return callback(null, true);
     }
-    return callback(null, true); // Allow any verified production domain
+    return callback(null, true); // Allow verified domains
   },
   credentials: true,
 }));
 
+// Request body parser with payload limits
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Global Deep Input Sanitization (Scrubs XSS, script injection, and prototype pollution)
+app.use(sanitizeInput);
+
+// Static uploads serving with security headers
+const uploadsPath = path.resolve(process.cwd(), 'public', 'uploads');
+app.use(
+  '/uploads',
+  express.static(uploadsPath, {
+    dotfiles: 'ignore',
+    maxAge: '7d',
+    setHeaders: (res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  })
+);
 
 if (config.env !== 'test') {
   app.use(morgan('dev'));
 }
 
-// Rate Limiting on Auth
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { success: false, message: 'Too many requests from this IP, please try again after 15 minutes.' },
-});
+// Rate Limiting on Auth Endpoints
 app.use('/api/auth', authLimiter);
 app.use('/auth', authLimiter);
 
