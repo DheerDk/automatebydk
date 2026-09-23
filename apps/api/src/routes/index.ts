@@ -3,6 +3,8 @@ import authRoutes from './auth.routes.js';
 import webhookRoutes from './webhook.routes.js';
 import qrRoutes from './qr.routes.js';
 import uploadRoutes from './upload.routes.js';
+import paymentRoutes from './payment.routes.js';
+import { PaymentController } from '../controllers/payment.controller.js';
 import { ProductController } from '../controllers/product.controller.js';
 import { CategoryController } from '../controllers/category.controller.js';
 import { CustomerController } from '../controllers/customer.controller.js';
@@ -45,9 +47,10 @@ router.get('/health', (req, res) => {
   });
 });
 
-// Public Auth & Webhook
+// Public Auth & Webhooks (Meta Cloud API & Razorpay Webhooks)
 router.use('/auth', authRoutes);
 router.use('/webhooks', webhookLimiter, webhookRoutes);
+router.post('/webhooks/razorpay', webhookLimiter, PaymentController.handleWebhook);
 
 // Public Plans List
 router.get('/plans', SuperAdminController.listPlans);
@@ -58,6 +61,9 @@ tenantRouter.use(authenticate, requireTenant, generalApiLimiter);
 
 // Secure File Upload Engine (Images, Media, Contacts CSV)
 tenantRouter.use('/upload', uploadRoutes);
+
+// Real-Time Payments & Subscriptions (Razorpay & In-Chat Checkout)
+tenantRouter.use('/payments', paymentRoutes);
 
 // Subscription & Invoices (Protected: only owners/admins can modify billing)
 tenantRouter.get('/subscription', SubscriptionController.getSubscription);

@@ -70,4 +70,11 @@ export const config = {
     smtpUser: process.env.SMTP_USER || '',
     smtpPass: process.env.SMTP_PASS || '',
   },
+
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+    mock: process.env.MOCK_PAYMENT === 'true' || !process.env.RAZORPAY_KEY_ID,
+  },
 };

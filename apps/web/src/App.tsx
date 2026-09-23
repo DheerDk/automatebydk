@@ -29,6 +29,7 @@ import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { SecuritySettingsPage } from './pages/settings/SecuritySettingsPage';
 import { ProfilePage } from './pages/profile/ProfilePage';
+import { BillingPage } from './pages/billing/BillingPage';
 import { SuperAdminPage } from './pages/superadmin/SuperAdminPage';
 
 const queryClient = new QueryClient();
@@ -64,12 +65,16 @@ export const App: React.FC = () => {
                   <Route path="ai" element={<AiTrainingPage />} />
                   <Route path="ai/sandbox" element={<AiSandboxPage />} />
                   <Route path="analytics" element={<AnalyticsPage />} />
+                  <Route path="billing" element={<BillingPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                   <Route path="security" element={<SecuritySettingsPage />} />
                   <Route path="profile" element={<ProfilePage />} />
                 </Route>
 
-                {/* Direct paths for profile & settings */}
+                {/* Direct paths for profile, settings & billing */}
+                <Route path="/billing" element={<DashboardLayout />}>
+                  <Route index element={<BillingPage />} />
+                </Route>
                 <Route path="/profile" element={<DashboardLayout />}>
                   <Route index element={<ProfilePage />} />
                 </Route>
