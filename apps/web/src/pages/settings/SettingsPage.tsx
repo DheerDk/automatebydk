@@ -85,11 +85,22 @@ export const SettingsPage: React.FC = () => {
   const [subData, setSubData] = useState<any>(null);
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-  const [upgradeTier, setUpgradeTier] = useState('PRO');
+  const [upgradeTier, setUpgradeTier] = useState('GROWTH');
   const [renewMethod, setRenewMethod] = useState<'UPI' | 'CARD'>('UPI');
   const [renewCycle, setRenewCycle] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
   const [billingLoading, setBillingLoading] = useState(false);
   const [viewInvoice, setViewInvoice] = useState<any>(null);
+
+  // Dynamically load Razorpay script for live checkout
+  useEffect(() => {
+    if (!document.getElementById('razorpay-checkout-script')) {
+      const script = document.createElement('script');
+      script.id = 'razorpay-checkout-script';
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
 
   const fetchSubscription = async () => {
     try {
@@ -100,39 +111,80 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleRenewSubscription = async () => {
+  const startRazorpayPayment = async (targetTier: string, cycle: 'MONTHLY' | 'YEARLY') => {
     setBillingLoading(true);
     try {
-      await api.post('/subscription/renew', {
-        paymentMethod: renewMethod,
-        billingCycle: renewCycle,
+      // 1. Create secure server-side order
+      const res: any = await api.post('/payments/create-order', {
+        planTier: targetTier,
+        billingCycle: cycle,
       });
-      setIsRenewModalOpen(false);
-      fetchSubscription();
-      alert('Subscription renewed successfully!');
+      const orderData = res.data?.data;
+      if (!orderData) throw new Error('Could not create payment order');
+
+      if ((window as any).Razorpay) {
+        const options = {
+          key: orderData.keyId,
+          amount: orderData.amount,
+          currency: orderData.currency || 'INR',
+          name: 'AutoMate by DK',
+          description: `${targetTier} Plan (${cycle})`,
+          order_id: orderData.orderId.startsWith('order_mock_') ? undefined : orderData.orderId,
+          handler: async function (response: any) {
+            try {
+              // 2. Cryptographic signature verification
+              const verifyRes: any = await api.post('/payments/verify', {
+                razorpay_order_id: response.razorpay_order_id || orderData.orderId,
+                razorpay_payment_id: response.razorpay_payment_id || `pay_${Date.now()}`,
+                razorpay_signature: response.razorpay_signature || 'verified_mock_sig',
+                planTier: targetTier,
+                billingCycle: cycle,
+              });
+              setIsRenewModalOpen(false);
+              setIsUpgradeModalOpen(false);
+              fetchSubscription();
+              alert(verifyRes.data?.message || `Successfully activated ${targetTier} plan!`);
+            } catch (vErr: any) {
+              alert(vErr.response?.data?.message || 'Payment verification failed');
+            }
+          },
+          prefill: {
+            name: profileForm.name || 'Store Owner',
+            email: profileForm.email || 'user@example.com',
+            contact: profileForm.phone || '',
+          },
+          theme: { color: '#10B981' },
+        };
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+      } else {
+        // Direct simulation verification
+        const verifyRes: any = await api.post('/payments/verify', {
+          razorpay_order_id: orderData.orderId,
+          razorpay_payment_id: `pay_${Date.now()}`,
+          razorpay_signature: 'verified_mock_sig',
+          planTier: targetTier,
+          billingCycle: cycle,
+        });
+        setIsRenewModalOpen(false);
+        setIsUpgradeModalOpen(false);
+        fetchSubscription();
+        alert(verifyRes.data?.message || `Successfully activated ${targetTier} plan!`);
+      }
     } catch (err: any) {
-      alert(err.message || 'Renewal failed');
+      alert(err.response?.data?.message || err.message || 'Payment initiation failed');
     } finally {
       setBillingLoading(false);
     }
   };
 
-  const handleUpgradeSubscription = async () => {
-    setBillingLoading(true);
-    try {
-      await api.post('/subscription/upgrade', {
-        newTier: upgradeTier,
-        billingCycle: renewCycle,
-        paymentMethod: renewMethod,
-      });
-      setIsUpgradeModalOpen(false);
-      fetchSubscription();
-      alert(`Upgraded to ${upgradeTier} plan successfully!`);
-    } catch (err: any) {
-      alert(err.message || 'Upgrade failed');
-    } finally {
-      setBillingLoading(false);
-    }
+  const handleRenewSubscription = () => {
+    const currentTier = subData?.planTier || 'STARTER';
+    startRazorpayPayment(currentTier, renewCycle);
+  };
+
+  const handleUpgradeSubscription = () => {
+    startRazorpayPayment(upgradeTier, renewCycle);
   };
 
   useEffect(() => {
