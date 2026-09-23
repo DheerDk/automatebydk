@@ -146,7 +146,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getGoogleAuthUrl = async () => {
-    const res: any = await api.get('/auth/google/url');
+    const redirectUri = typeof window !== 'undefined' ? `${window.location.origin}/auth/google/callback` : undefined;
+    const res: any = await api.get('/auth/google/url', { params: { redirectUri } });
     return res || { isConfigured: false };
   };
 
