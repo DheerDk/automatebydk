@@ -19,7 +19,13 @@ import {
   Image as ImageIcon,
   Tag,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  Users,
+  X,
+  Play,
+  Share2,
+  MessageSquare,
+  ArrowRight,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -45,7 +51,6 @@ export interface MessageTemplate {
   updatedAt?: string;
 }
 
-// Built-in starter templates for one-click customization
 const STARTER_TEMPLATES: Omit<MessageTemplate, 'id'>[] = [
   {
     name: 'order_status_update',
@@ -98,6 +103,31 @@ const STARTER_TEMPLATES: Omit<MessageTemplate, 'id'>[] = [
     footerText: 'Expires in 10 minutes',
     buttons: [{ type: 'QUICK_REPLY', text: 'Copy OTP' }],
   },
+  {
+    name: 'payment_reminder',
+    category: 'UTILITY',
+    language: 'en',
+    status: 'APPROVED',
+    body: 'Hi {{1}}, a friendly reminder regarding your pending invoice #{{2}} for amount ₹{{3}}. Kindly complete payment via the link below.',
+    variables: ['Customer Name', 'Invoice #', 'Amount'],
+    footerText: 'AutoMate Secure Payments',
+    buttons: [
+      { type: 'URL', text: 'Pay Securely Now 💳', url: 'https://automatebydk.pages.dev/billing' },
+    ],
+  },
+  {
+    name: 'lead_follow_up',
+    category: 'MARKETING',
+    language: 'en',
+    status: 'APPROVED',
+    body: 'Hello {{1}}! Thank you for showing interest in {{2}}. Our sales team is ready to provide you with the best quote. Would you like a quick callback?',
+    variables: ['Customer Name', 'Product / Service Name'],
+    footerText: 'Reply YES for callback',
+    buttons: [
+      { type: 'QUICK_REPLY', text: 'Request Callback 📞' },
+      { type: 'QUICK_REPLY', text: 'View Catalog 🛍️' },
+    ],
+  },
 ];
 
 export const TemplatesPage: React.FC = () => {
@@ -108,6 +138,7 @@ export const TemplatesPage: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | 'MARKETING' | 'UTILITY' | 'AUTHENTICATION'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // Template Form State
   const [name, setName] = useState('');
@@ -122,13 +153,27 @@ export const TemplatesPage: React.FC = () => {
   const [button1Url, setButton1Url] = useState('https://automatebydk.pages.dev');
   const [button2Text, setButton2Text] = useState('Chat with Us 💬');
 
+  // SEND MODAL STATE
+  const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+  const [sendingTemplate, setSendingTemplate] = useState<MessageTemplate | null>(null);
+  const [recipientInput, setRecipientInput] = useState('');
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [customHeaderMediaUrl, setCustomHeaderMediaUrl] = useState('');
+  const [sendToAllLeads, setSendToAllLeads] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 4000);
+  };
+
   const fetchTemplates = async () => {
     setIsLoading(true);
     try {
       const res: any = await api.get('/templates');
-      if (res.data && Array.isArray(res.data)) {
-        // If user has database templates, use them; if empty, show starter templates
-        setTemplates(res.data);
+      const payload = res?.data || res;
+      if (Array.isArray(payload)) {
+        setTemplates(payload);
       }
     } catch (err) {
       console.error('Failed to fetch templates:', err);
@@ -193,6 +238,7 @@ export const TemplatesPage: React.FC = () => {
     if (!confirm(`Are you sure you want to delete template "${tplName}"?`)) return;
     try {
       await api.delete(`/templates/${id}`);
+      showToast(`Template "${tplName}" deleted successfully`);
       fetchTemplates();
     } catch (err: any) {
       alert(err.message || 'Failed to delete template');
@@ -206,7 +252,6 @@ export const TemplatesPage: React.FC = () => {
   };
 
   const insertVariable = () => {
-    // Count existing variables like {{1}}, {{2}}
     const matches = body.match(/\{\{(\d+)\}\}/g) || [];
     const nextIndex = matches.length + 1;
     setBody(`${body} {{${nextIndex}}}`);
@@ -219,7 +264,6 @@ export const TemplatesPage: React.FC = () => {
       return;
     }
 
-    // Extract variable count
     const varMatches = body.match(/\{\{(\d+)\}\}/g) || [];
     const variables = Array.from(new Set(varMatches));
 
@@ -247,8 +291,10 @@ export const TemplatesPage: React.FC = () => {
     try {
       if (editingId) {
         await api.put(`/templates/${editingId}`, payload);
+        showToast('Template updated successfully!');
       } else {
         await api.post('/templates', payload);
+        showToast('New template created successfully!');
       }
       setIsModalOpen(false);
       fetchTemplates();
@@ -257,7 +303,74 @@ export const TemplatesPage: React.FC = () => {
     }
   };
 
-  // Combine database templates + starter templates if database is fresh
+  // OPEN SEND MODAL
+  const openSendModal = (tpl: MessageTemplate) => {
+    setSendingTemplate(tpl);
+    setRecipientInput('');
+    setCustomHeaderMediaUrl(tpl.headerMediaUrl || '');
+    setSendToAllLeads(false);
+
+    // Parse variables from body e.g. {{1}}, {{2}}
+    const varMatches = tpl.body.match(/\{\{(\d+)\}\}/g) || [];
+    const initialVals: Record<string, string> = {};
+    varMatches.forEach((v) => {
+      const num = v.replace(/\D/g, '');
+      initialVals[num] = '';
+    });
+
+    if (tpl.variables && Array.isArray(tpl.variables)) {
+      tpl.variables.forEach((vName, idx) => {
+        initialVals[String(idx + 1)] = '';
+        initialVals[vName] = '';
+      });
+    }
+
+    setVariableValues(initialVals);
+    setIsSendModalOpen(true);
+  };
+
+  // DISPATCH TEMPLATE VIA WHATSAPP
+  const handleSendTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sendingTemplate) return;
+
+    if (!sendToAllLeads && !recipientInput.trim()) {
+      alert('Please enter at least one recipient phone number (e.g. +919876543210)');
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const res: any = await api.post(`/templates/${sendingTemplate.id}/send`, {
+        recipients: recipientInput.trim(),
+        variableValues,
+        headerMediaUrl: customHeaderMediaUrl.trim() || undefined,
+        sendToAllLeads,
+      });
+
+      const data = res?.data || res;
+      showToast(data?.message || 'WhatsApp template dispatched successfully!');
+      setIsSendModalOpen(false);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to send template');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Compute live rendered preview text for send modal
+  const getRenderedSendPreview = () => {
+    if (!sendingTemplate) return '';
+    let rendered = sendingTemplate.body;
+    for (let i = 1; i <= 10; i++) {
+      const val = variableValues[String(i)];
+      if (val) {
+        rendered = rendered.replace(new RegExp(`\\{\\{${i}\\}\\}`, 'g'), val);
+      }
+    }
+    return rendered;
+  };
+
   const displayTemplates = templates.length > 0 ? templates : (STARTER_TEMPLATES as any);
 
   const filteredTemplates = displayTemplates.filter((t: MessageTemplate) => {
@@ -271,456 +384,701 @@ export const TemplatesPage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 text-slate-100 font-sans">
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div className="fixed top-6 right-6 z-50 bg-slate-900 border border-emerald-500/50 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <Check className="w-4 h-4" />
+          </div>
+          <span className="text-xs font-bold">{toastMsg}</span>
+        </div>
+      )}
+
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 rounded-3xl border border-slate-700/80 shadow-2xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 sm:p-7 rounded-3xl border border-slate-700/80 shadow-2xl">
         <div>
           <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs tracking-wider uppercase mb-1.5">
-            <Sparkles className="w-4 h-4" /> Official WhatsApp Cloud API
+            <Sparkles className="w-4 h-4" /> Official WhatsApp Cloud API &amp; Multi-Device
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
             WhatsApp Message Templates
           </h1>
           <p className="text-slate-300 text-sm mt-1 max-w-2xl">
-            Create, preview, and manage rich message templates with dynamic variable tags (<code className="text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded">{'{{1}}'}</code>), call-to-action buttons, and instant mobile preview.
+            Design, preview, and send custom message templates with dynamic variable tags (<code className="text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded">{'{{1}}'}</code>), call-to-action buttons, and instant WhatsApp delivery.
           </p>
         </div>
 
-        <button
-          onClick={openNewModal}
-          className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-2.5 rounded-2xl text-sm font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 self-start sm:self-auto cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Message Template</span>
-        </button>
-      </div>
-
-      {/* Starter Template Library Section */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
-            <Layers className="w-4 h-4 text-emerald-400" />
-            <span>Ready-to-Use Starter Templates (1-Click Customize)</span>
-          </div>
-          <span className="text-[11px] text-slate-400">Click any preset to load into customizer</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {STARTER_TEMPLATES.map((st, idx) => (
-            <div
-              key={idx}
-              onClick={() => loadStarterTemplate(st)}
-              className="group bg-slate-950/80 hover:bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 cursor-pointer transition flex flex-col justify-between space-y-2.5"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
-                    {st.category}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono">en</span>
-                </div>
-                <h4 className="text-xs font-bold text-white group-hover:text-emerald-300 transition">
-                  {st.name}
-                </h4>
-                <p className="text-[11px] text-slate-400 line-clamp-2 mt-1 leading-relaxed">
-                  {st.body}
-                </p>
-              </div>
-              <div className="text-[10px] font-semibold text-emerald-400 flex items-center gap-1 pt-1">
-                <span>Use & Customize</span>
-                <span className="group-hover:translate-x-0.5 transition-transform">→</span>
-              </div>
-            </div>
-          ))}
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          <button
+            onClick={openNewModal}
+            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-2.5 rounded-2xl text-xs font-black shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>New Custom Template</span>
+          </button>
         </div>
       </div>
 
-      {/* Controls & Filters */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+      {/* Filters & Search Toolbar */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900/90 p-4 rounded-2xl border border-slate-800 backdrop-blur-md">
         {/* Category Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
           {(['ALL', 'MARKETING', 'UTILITY', 'AUTHENTICATION'] as const).map((cat) => (
             <button
               key={cat}
               onClick={() => setCategoryFilter(cat)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 categoryFilter === cat
                   ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                  : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              {cat === 'ALL' && 'All Categories'}
-              {cat === 'MARKETING' && '🛍️ Marketing'}
-              {cat === 'UTILITY' && '⚡ Utility'}
-              {cat === 'AUTHENTICATION' && '🔐 Auth & OTP'}
+              {cat === 'ALL' ? 'All Categories' : cat}
             </button>
           ))}
         </div>
 
-        {/* Search */}
-        <div className="relative w-full sm:w-64">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        {/* Search Box */}
+        <div className="relative w-full sm:w-72">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search templates..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+            placeholder="Search templates or keywords..."
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
       </div>
 
       {/* Templates Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredTemplates.map((tpl: MessageTemplate) => (
-          <div
-            key={tpl.id || tpl.name}
-            className="bg-slate-900 rounded-3xl border border-slate-800 hover:border-slate-700 shadow-xl transition-all flex flex-col justify-between overflow-hidden group"
+      {isLoading ? (
+        <div className="h-64 flex flex-col items-center justify-center space-y-3">
+          <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-slate-400 font-semibold">Loading templates...</p>
+        </div>
+      ) : filteredTemplates.length === 0 ? (
+        <div className="p-12 text-center bg-slate-900 rounded-3xl border border-slate-800 space-y-4">
+          <FileText className="w-12 h-12 text-slate-600 mx-auto" />
+          <h3 className="text-lg font-bold text-white">No Templates Found</h3>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            No message templates match your current filter. Try searching for something else or create a custom template.
+          </p>
+          <button
+            onClick={openNewModal}
+            className="px-4 py-2 bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl hover:bg-emerald-400 shadow-md"
           >
-            {/* Top Bar */}
-            <div className="p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
-                  {tpl.category}
-                </span>
+            Create First Template
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredTemplates.map((t: MessageTemplate) => {
+            const isStarter = !t.id;
+            return (
+              <div
+                key={t.id || t.name}
+                className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-3xl p-5 shadow-xl transition-all flex flex-col justify-between group"
+              >
+                <div className="space-y-3">
+                  {/* Card Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-slate-800 text-emerald-400 border border-slate-700">
+                        {t.category}
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">
+                        {t.language?.toUpperCase() || 'EN'}
+                      </span>
+                    </div>
 
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-medium text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
-                    {tpl.language || 'en'}
-                  </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                    <CheckCircle2 className="w-2.5 h-2.5" /> Approved
-                  </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      Ready to Send
+                    </span>
+                  </div>
+
+                  {/* Template Name */}
+                  <h3 className="text-sm font-bold text-white tracking-tight font-mono truncate">
+                    {t.name}
+                  </h3>
+
+                  {/* WhatsApp Message Bubble Simulation */}
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-3.5 space-y-2 relative">
+                    {/* Header preview if present */}
+                    {t.headerType === 'TEXT' && t.headerText && (
+                      <p className="text-xs font-bold text-emerald-400 border-b border-slate-800 pb-1">
+                        {t.headerText}
+                      </p>
+                    )}
+
+                    {t.headerType === 'IMAGE' && (
+                      <div className="h-24 bg-slate-900 rounded-lg flex items-center justify-center text-slate-500 border border-slate-800 overflow-hidden">
+                        {t.headerMediaUrl ? (
+                          <img
+                            src={t.headerMediaUrl}
+                            alt="Header Flyer"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-1 text-[11px]">
+                            <ImageIcon className="w-3.5 h-3.5" />
+                            <span>Attached Image / Flyer</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Message Body with highlighted variables */}
+                    <p className="text-xs text-slate-200 leading-relaxed break-words whitespace-pre-wrap">
+                      {t.body}
+                    </p>
+
+                    {/* Footer text */}
+                    {t.footerText && (
+                      <p className="text-[10px] text-slate-400 italic pt-1 border-t border-slate-900">
+                        {t.footerText}
+                      </p>
+                    )}
+
+                    {/* Action Buttons preview */}
+                    {t.buttons && t.buttons.length > 0 && (
+                      <div className="pt-2 border-t border-slate-800/60 space-y-1">
+                        {t.buttons.map((btn, idx) => (
+                          <div
+                            key={idx}
+                            className="text-center py-1.5 px-2 bg-slate-900 border border-slate-800 rounded-lg text-[11px] font-semibold text-emerald-400 flex items-center justify-center gap-1.5"
+                          >
+                            {btn.type === 'URL' && <ExternalLink className="w-3 h-3 text-emerald-400" />}
+                            {btn.type === 'PHONE_NUMBER' && <PhoneCall className="w-3 h-3 text-emerald-400" />}
+                            <span>{btn.text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Variables badges */}
+                  {t.variables && t.variables.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 pt-1">
+                      <span className="text-[10px] text-slate-500 font-semibold mr-1">Variables:</span>
+                      {t.variables.map((v, i) => (
+                        <span
+                          key={i}
+                          className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700"
+                        >
+                          {v.startsWith('{{') ? v : `{{${i + 1}}}: ${v}`}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Card Actions Footer */}
+                <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleCopyBody(t.id || t.name, t.body)}
+                      className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                      title="Copy template text"
+                    >
+                      {copiedId === (t.id || t.name) ? (
+                        <Check className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </button>
+
+                    {!isStarter && (
+                      <>
+                        <button
+                          onClick={() => openEditModal(t)}
+                          className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                          title="Edit template"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(t.id, t.name)}
+                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                          title="Delete template"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* PRIMARY ACTION: SEND TEMPLATE NOW */}
+                  <button
+                    onClick={() => (isStarter ? loadStarterTemplate(t) : openSendModal(t))}
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>{isStarter ? 'Customize & Save' : 'Send Template'}</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* MODAL 1: SEND TEMPLATE TO CUSTOM RECIPIENTS */}
+      {isSendModalOpen && sendingTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <Send className="w-4 h-4 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Send WhatsApp Template: <span className="font-mono text-emerald-400">{sendingTemplate.name}</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Dispatch to custom phone numbers, existing customers, or all leads.
+                  </p>
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="truncate">{tpl.name}</span>
-                </h3>
-              </div>
-
-              {/* WhatsApp Simulated Message Card */}
-              <div className="bg-[#0b141a] p-3.5 rounded-2xl border border-slate-800/80 space-y-2 relative shadow-inner">
-                {tpl.headerText && (
-                  <div className="font-bold text-xs text-emerald-400 pb-1 border-b border-slate-800/60">
-                    {tpl.headerText}
-                  </div>
-                )}
-
-                <p className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed">
-                  {tpl.body}
-                </p>
-
-                {tpl.footerText && (
-                  <p className="text-[10px] text-slate-400 italic pt-1">
-                    {tpl.footerText}
-                  </p>
-                )}
-
-                {/* Simulated Buttons */}
-                {tpl.buttons && tpl.buttons.length > 0 && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
-                    {tpl.buttons.map((btn, bIdx) => (
-                      <div
-                        key={bIdx}
-                        className="w-full bg-[#1f2c34] hover:bg-[#2a3942] text-teal-400 text-[11px] font-semibold py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 text-center transition"
-                      >
-                        {btn.type === 'URL' && <ExternalLink className="w-3 h-3" />}
-                        {btn.type === 'PHONE_NUMBER' && <PhoneCall className="w-3 h-3" />}
-                        {btn.type === 'QUICK_REPLY' && <Send className="w-3 h-3" />}
-                        <span>{btn.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Bottom Actions */}
-            <div className="p-4 bg-slate-950/60 border-t border-slate-800 flex items-center justify-between gap-2">
               <button
-                onClick={() => handleCopyBody(tpl.id || tpl.name, tpl.body)}
-                className="text-xs text-slate-400 hover:text-white flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                onClick={() => setIsSendModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
               >
-                {copiedId === (tpl.id || tpl.name) ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-emerald-400 font-bold">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy</span>
-                  </>
-                )}
+                <X className="w-5 h-5" />
               </button>
-
-              <div className="flex items-center gap-1.5">
-                {tpl.id && (
-                  <>
-                    <button
-                      onClick={() => openEditModal(tpl)}
-                      title="Edit Template"
-                      className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(tpl.id, tpl.name)}
-                      title="Delete Template"
-                      className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </>
-                )}
-
-                <Link
-                  to="/dashboard/campaigns"
-                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1"
-                >
-                  <Send className="w-3 h-3" />
-                  <span>Broadcast</span>
-                </Link>
-              </div>
             </div>
-          </div>
-        ))}
-      </div>
 
-      {/* CREATE / EDIT TEMPLATE MODAL */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 rounded-3xl shadow-2xl w-full max-w-4xl p-6 border border-slate-800 text-white my-8 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
-              <div>
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-emerald-400" />
-                  {editingId ? 'Edit Message Template' : 'Create New WhatsApp Template'}
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Configure header, dynamic variable placeholders, and interactive buttons with live simulation.
-                </p>
+            {/* Modal Body */}
+            <form onSubmit={handleSendTemplate} className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left Form: Inputs */}
+                <div className="lg:col-span-7 space-y-4">
+                  {/* Recipient Mode Selection */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                      Select Recipients:
+                    </label>
+
+                    <div className="flex items-center gap-4 text-xs font-semibold text-slate-300">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="sendMode"
+                          checked={!sendToAllLeads}
+                          onChange={() => setSendToAllLeads(false)}
+                          className="accent-emerald-500"
+                        />
+                        <span>Custom Phone Numbers</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="sendMode"
+                          checked={sendToAllLeads}
+                          onChange={() => setSendToAllLeads(true)}
+                          className="accent-emerald-500"
+                        />
+                        <span>Broadcast to All Captured Leads</span>
+                      </label>
+                    </div>
+
+                    {!sendToAllLeads ? (
+                      <div>
+                        <textarea
+                          rows={2}
+                          value={recipientInput}
+                          onChange={(e) => setRecipientInput(e.target.value)}
+                          placeholder="e.g. +919876543210, +919811223344 (comma or newline separated)"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                          required={!sendToAllLeads}
+                        />
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Enter country code with + (e.g. <span className="font-mono text-emerald-400">+919876543210</span>).
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
+                        <Users className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Will automatically dispatch this template to all active leads in your pipeline!</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dynamic Variables Form Fields */}
+                  <div className="space-y-3 pt-2 border-t border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                        Custom Variable Values:
+                      </label>
+                      <span className="text-[10px] text-emerald-400 font-semibold">Live Real-time Preview</span>
+                    </div>
+
+                    {/* Generate input for each variable */}
+                    {Object.keys(variableValues).length === 0 ? (
+                      <p className="text-xs text-slate-500 italic">This template has no dynamic variable tags.</p>
+                    ) : (
+                      <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                        {Object.keys(variableValues)
+                          .filter((k) => /^\d+$/.test(k)) // Only numbered keys
+                          .map((keyNum) => (
+                            <div key={keyNum} className="flex items-center gap-2">
+                              <span className="w-14 text-center py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-emerald-400">
+                                {`{{${keyNum}}}`}
+                              </span>
+                              <input
+                                type="text"
+                                value={variableValues[keyNum] || ''}
+                                onChange={(e) =>
+                                  setVariableValues({ ...variableValues, [keyNum]: e.target.value })
+                                }
+                                placeholder={`Value for variable ${keyNum} (e.g. Rahul, 20% OFF)`}
+                                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                              />
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Header Image Override */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-800">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                      Optional Header Image / Flyer URL:
+                    </label>
+                    <input
+                      type="url"
+                      value={customHeaderMediaUrl}
+                      onChange={(e) => setCustomHeaderMediaUrl(e.target.value)}
+                      placeholder="https://images.unsplash.com/photo-example.jpg"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Right: Live Real-time WhatsApp Preview */}
+                <div className="lg:col-span-5 bg-slate-950 rounded-2xl p-4 border border-slate-800 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                        Live WhatsApp Chat Preview
+                      </span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    </div>
+
+                    {/* Simulated Phone Bubble */}
+                    <div className="bg-[#0b141a] p-4 rounded-2xl border border-slate-800 shadow-inner space-y-2 text-xs">
+                      {/* Optional Image */}
+                      {customHeaderMediaUrl && (
+                        <div className="h-32 rounded-xl overflow-hidden bg-slate-900 border border-slate-800">
+                          <img
+                            src={customHeaderMediaUrl}
+                            alt="Flyer Preview"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+
+                      {/* Header Text */}
+                      {sendingTemplate.headerType === 'TEXT' && sendingTemplate.headerText && (
+                        <p className="font-bold text-emerald-400 border-b border-slate-800 pb-1">
+                          {sendingTemplate.headerText}
+                        </p>
+                      )}
+
+                      {/* Rendered Text */}
+                      <p className="text-slate-100 whitespace-pre-wrap leading-relaxed">
+                        {getRenderedSendPreview()}
+                      </p>
+
+                      {/* Footer */}
+                      {sendingTemplate.footerText && (
+                        <p className="text-[10px] text-slate-400 italic pt-1 border-t border-slate-900">
+                          {sendingTemplate.footerText}
+                        </p>
+                      )}
+
+                      {/* Buttons */}
+                      {sendingTemplate.buttons && sendingTemplate.buttons.length > 0 && (
+                        <div className="pt-2 border-t border-slate-800 space-y-1">
+                          {sendingTemplate.buttons.map((btn, i) => (
+                            <div
+                              key={i}
+                              className="text-center py-1.5 bg-[#111b21] border border-slate-800 rounded-lg text-[11px] font-semibold text-emerald-400 flex items-center justify-center gap-1"
+                            >
+                              <span>{btn.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Dispatch Notice */}
+                  <div className="mt-4 pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Dispatches directly via connected WhatsApp session and logs in Inbox.</span>
+                  </div>
+                </div>
               </div>
+
+              {/* Modal Footer Actions */}
+              <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsSendModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSending}
+                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/25 flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
+                >
+                  <Send className="w-4 h-4 stroke-[3]" />
+                  <span>{isSending ? 'Dispatching WhatsApp...' : 'Send WhatsApp Template Now'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: CREATE / EDIT TEMPLATE MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {editingId ? 'Edit Message Template' : 'Create New WhatsApp Template'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Customize message body, variable tags, headers, and quick reply buttons.
+                  </p>
+                </div>
+              </div>
+
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-800 cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Form Details */}
-              <div className="lg:col-span-7 space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <form onSubmit={handleSave} className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Form Fields */}
+                <div className="lg:col-span-7 space-y-4">
+                  {/* Name & Category */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1">
+                        Template Name:
+                      </label>
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="e.g. flash_sale_discount"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1">
+                        Category:
+                      </label>
+                      <select
+                        value={category}
+                        onChange={(e: any) => setCategory(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                      >
+                        <option value="MARKETING">Marketing &amp; Promotions</option>
+                        <option value="UTILITY">Utility &amp; Order Updates</option>
+                        <option value="AUTHENTICATION">Authentication / OTP</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Header Type */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                      Header Type:
+                    </label>
+                    <div className="flex items-center gap-3 text-xs">
+                      {(['NONE', 'TEXT', 'IMAGE'] as const).map((h) => (
+                        <label key={h} className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="headerType"
+                            checked={headerType === h}
+                            onChange={() => setHeaderType(h)}
+                            className="accent-emerald-500"
+                          />
+                          <span>{h}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    {headerType === 'TEXT' && (
+                      <input
+                        type="text"
+                        value={headerText}
+                        onChange={(e) => setHeaderText(e.target.value)}
+                        placeholder="Header Title (e.g. 🌟 Exclusive VIP Offer)"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    )}
+
+                    {headerType === 'IMAGE' && (
+                      <input
+                        type="url"
+                        value={headerMediaUrl}
+                        onChange={(e) => setHeaderMediaUrl(e.target.value)}
+                        placeholder="Image flyer URL (e.g. https://images.unsplash.com/...)"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    )}
+                  </div>
+
+                  {/* Message Body with Variable Helper */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                        Message Body:
+                      </label>
+                      <button
+                        type="button"
+                        onClick={insertVariable}
+                        className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Insert Variable tag</span>
+                      </button>
+                    </div>
+
+                    <textarea
+                      rows={4}
+                      value={body}
+                      onChange={(e) => setBody(e.target.value)}
+                      placeholder="Hi {{1}}, thank you for contacting us! Your order #{{2}} is confirmed."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white leading-relaxed focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      required
+                    />
+                    <p className="text-[11px] text-slate-400">
+                      Use <code className="text-emerald-400 font-mono">{'{{1}}'}</code>, <code className="text-emerald-400 font-mono">{'{{2}}'}</code> for customer name, order number, discounts, etc.
+                    </p>
+                  </div>
+
+                  {/* Footer Text */}
                   <div>
-                    <label className="text-slate-300 font-semibold block mb-1">
-                      Template Name (lowercase, no spaces) *
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1">
+                      Footer Text (Optional):
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. order_confirmed_alert"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      value={footerText}
+                      onChange={(e) => setFooterText(e.target.value)}
+                      placeholder="e.g. Reply STOP to unsubscribe"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>
 
-                  <div>
-                    <label className="text-slate-300 font-semibold block mb-1">Category *</label>
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value as any)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                    >
-                      <option value="MARKETING">🛍️ Marketing (Offers & Promos)</option>
-                      <option value="UTILITY">⚡ Utility (Orders & Updates)</option>
-                      <option value="AUTHENTICATION">🔐 Authentication (OTP & Security)</option>
-                    </select>
-                  </div>
-                </div>
+                  {/* Call-to-action buttons */}
+                  <div className="space-y-2 pt-2 border-t border-slate-800">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                      Quick Action Buttons:
+                    </label>
 
-                <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Header (Optional)</label>
-                  <div className="flex gap-2 mb-2">
-                    {(['NONE', 'TEXT', 'IMAGE'] as const).map((type) => (
-                      <button
-                        type="button"
-                        key={type}
-                        onClick={() => setHeaderType(type)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer ${
-                          headerType === type
-                            ? 'bg-emerald-500 text-slate-950'
-                            : 'bg-slate-950 text-slate-400 border border-slate-800'
-                        }`}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
-
-                  {headerType === 'TEXT' && (
-                    <input
-                      type="text"
-                      placeholder="Enter header title..."
-                      value={headerText}
-                      onChange={(e) => setHeaderText(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  )}
-                  {headerType === 'IMAGE' && (
-                    <input
-                      type="url"
-                      placeholder="https://images.unsplash.com/photo-sample.jpg"
-                      value={headerMediaUrl}
-                      onChange={(e) => setHeaderMediaUrl(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  )}
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-slate-300 font-semibold">Message Body *</label>
-                    <button
-                      type="button"
-                      onClick={insertVariable}
-                      className="text-[11px] text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-md font-semibold cursor-pointer"
-                    >
-                      + Insert Variable {'{{1}}'}
-                    </button>
-                  </div>
-                  <textarea
-                    rows={5}
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder="Hello {{1}}, your order #{{2}} is confirmed..."
-                    required
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500 leading-relaxed font-sans"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Use placeholders like <code className="text-emerald-400">{'{{1}}'}</code>, <code className="text-emerald-400">{'{{2}}'}</code> to automatically personalize messages with the customer's name, order ID, or promo code.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Footer Text (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Reply STOP to opt-out"
-                    value={footerText}
-                    onChange={(e) => setFooterText(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-
-                {/* Interactive Buttons */}
-                <div className="space-y-2 pt-2 border-t border-slate-800">
-                  <label className="text-slate-300 font-semibold block">Interactive Action Buttons</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block mb-1">Button 1 (URL Link)</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <input
                         type="text"
-                        placeholder="Button Title (e.g. Shop Online)"
                         value={button1Text}
                         onChange={(e) => setButton1Text(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white mb-1.5 focus:outline-none focus:border-emerald-500"
+                        placeholder="Button 1 (URL) Text"
+                        className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-emerald-500 focus:outline-none"
                       />
                       <input
                         type="url"
-                        placeholder="https://yourstore.com"
                         value={button1Url}
                         onChange={(e) => setButton1Url(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                        placeholder="https://yourwebsite.com"
+                        className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none"
                       />
                     </div>
 
-                    <div>
-                      <span className="text-[10px] text-slate-400 block mb-1">Button 2 (Quick Reply)</span>
-                      <input
-                        type="text"
-                        placeholder="Button Title (e.g. Talk to Agent)"
-                        value={button2Text}
-                        onChange={(e) => setButton2Text(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                      />
-                    </div>
+                    <input
+                      type="text"
+                      value={button2Text}
+                      onChange={(e) => setButton2Text(e.target.value)}
+                      placeholder="Button 2 (Quick Reply) Text e.g. Chat with Us 💬"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                    />
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white bg-slate-800 font-semibold cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer"
-                  >
-                    {editingId ? 'Update Template' : 'Save Message Template'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Right Column: Live Mobile Screen Simulation */}
-              <div className="lg:col-span-5 bg-slate-950/80 p-5 rounded-3xl border border-slate-800 flex flex-col items-center justify-center">
-                <div className="text-center mb-3">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-center gap-1.5">
-                    <Smartphone className="w-4 h-4 text-emerald-400" /> Live WhatsApp Mobile Screen
-                  </span>
-                </div>
-
-                {/* Smartphone Device Frame */}
-                <div className="w-[280px] bg-[#111b21] rounded-[36px] p-3 border-4 border-slate-800 shadow-2xl relative">
-                  {/* Phone Notch / Header */}
-                  <div className="bg-[#202c33] -mx-3 -mt-3 p-3 rounded-t-[32px] flex items-center gap-2 border-b border-slate-800">
-                    <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center text-xs font-bold text-white">
-                      DK
+                {/* Right: Live Preview */}
+                <div className="lg:col-span-5 bg-slate-950 rounded-2xl p-4 border border-slate-800 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                        Real-Time Mobile Simulation
+                      </span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     </div>
-                    <div>
-                      <h5 className="text-[11px] font-bold text-white leading-tight">AutoMate Official</h5>
-                      <span className="text-[9px] text-emerald-400">Verified Business Account</span>
-                    </div>
-                  </div>
 
-                  {/* Message Bubble Container */}
-                  <div className="py-4 space-y-3 min-h-[260px] flex flex-col justify-end">
-                    <div className="bg-[#005c4b] text-white p-3 rounded-2xl rounded-tl-sm text-xs shadow-md space-y-2">
-                      {headerType === 'TEXT' && headerText && (
-                        <div className="font-bold text-emerald-200 border-b border-emerald-600/50 pb-1 text-[11px]">
-                          {headerText}
+                    <div className="bg-[#0b141a] p-4 rounded-2xl border border-slate-800 shadow-inner space-y-2 text-xs">
+                      {headerType === 'IMAGE' && headerMediaUrl && (
+                        <div className="h-28 rounded-xl overflow-hidden bg-slate-900 border border-slate-800">
+                          <img
+                            src={headerMediaUrl}
+                            alt="Header Flyer"
+                            className="w-full h-full object-cover"
+                          />
                         </div>
                       )}
 
-                      <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
-                        {body || 'Template message content will appear here in real-time...'}
+                      {headerType === 'TEXT' && headerText && (
+                        <p className="font-bold text-emerald-400 border-b border-slate-800 pb-1">
+                          {headerText}
+                        </p>
+                      )}
+
+                      <p className="text-slate-100 whitespace-pre-wrap leading-relaxed">
+                        {body || 'Type your message body on the left to see live preview...'}
                       </p>
 
                       {footerText && (
-                        <div className="text-[9px] text-emerald-200/80 italic pt-0.5">
+                        <p className="text-[10px] text-slate-400 italic pt-1 border-t border-slate-900">
                           {footerText}
-                        </div>
+                        </p>
                       )}
 
-                      {/* Action Buttons in Preview */}
                       {(button1Text || button2Text) && (
-                        <div className="space-y-1 pt-1.5 border-t border-emerald-600/40">
+                        <div className="pt-2 border-t border-slate-800 space-y-1">
                           {button1Text && (
-                            <div className="w-full bg-[#111b21]/80 text-teal-300 py-1 px-2 rounded-md text-[10px] font-bold text-center flex items-center justify-center gap-1">
-                              <ExternalLink className="w-2.5 h-2.5" />
+                            <div className="text-center py-1.5 bg-[#111b21] border border-slate-800 rounded-lg text-[11px] font-semibold text-emerald-400 flex items-center justify-center gap-1">
+                              <ExternalLink className="w-3 h-3" />
                               <span>{button1Text}</span>
                             </div>
                           )}
                           {button2Text && (
-                            <div className="w-full bg-[#111b21]/80 text-teal-300 py-1 px-2 rounded-md text-[10px] font-bold text-center flex items-center justify-center gap-1">
-                              <Send className="w-2.5 h-2.5" />
+                            <div className="text-center py-1.5 bg-[#111b21] border border-slate-800 rounded-lg text-[11px] font-semibold text-emerald-400">
                               <span>{button2Text}</span>
                             </div>
                           )}
@@ -728,7 +1086,30 @@ export const TemplatesPage: React.FC = () => {
                       )}
                     </div>
                   </div>
+
+                  <p className="text-[11px] text-slate-500 mt-4 text-center">
+                    Compliant with Meta WhatsApp Cloud API format specifications.
+                  </p>
                 </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/25 flex items-center gap-2 transition cursor-pointer"
+                >
+                  <Check className="w-4 h-4 stroke-[3]" />
+                  <span>{editingId ? 'Save Changes' : 'Create Template'}</span>
+                </button>
               </div>
             </form>
           </div>

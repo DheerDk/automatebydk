@@ -112,6 +112,8 @@ tenantRouter.delete('/automations/:id', AutomationController.delete);
 // Templates & Broadcast Campaigns
 tenantRouter.get('/templates', TemplateController.list);
 tenantRouter.post('/templates', TemplateController.create);
+tenantRouter.post('/templates/send-direct', TemplateController.sendTemplate);
+tenantRouter.post('/templates/:id/send', TemplateController.sendTemplate);
 tenantRouter.put('/templates/:id', TemplateController.update);
 tenantRouter.delete('/templates/:id', TemplateController.delete);
 
