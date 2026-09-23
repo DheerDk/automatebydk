@@ -6,13 +6,17 @@ import { logger } from '../utils/logger.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { AuditService } from './audit.service.js';
 
-let razorpayClient: Razorpay | null = null;
+function getRazorpayClient(): Razorpay | null {
+  const keyId = (process.env.RAZORPAY_KEY_ID || config.razorpay.keyId || '').trim();
+  const keySecret = (process.env.RAZORPAY_KEY_SECRET || config.razorpay.keySecret || '').trim();
 
-if (config.razorpay.keyId && config.razorpay.keySecret) {
-  razorpayClient = new Razorpay({
-    key_id: config.razorpay.keyId,
-    key_secret: config.razorpay.keySecret,
-  });
+  if (keyId && keySecret && keyId.startsWith('rzp_')) {
+    return new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret,
+    });
+  }
+  return null;
 }
 
 export class PaymentService {
@@ -59,9 +63,12 @@ export class PaymentService {
 
     // If Razorpay live keys are configured, create order via Razorpay API
     let razorpayOrderId = '';
-    if (razorpayClient && !config.razorpay.mock) {
+    const razorpay = getRazorpayClient();
+    const keyId = (process.env.RAZORPAY_KEY_ID || config.razorpay.keyId || '').trim();
+
+    if (razorpay && !config.razorpay.mock) {
       try {
-        const order = await razorpayClient.orders.create({
+        const order = await razorpay.orders.create({
           amount: amountInPaise,
           currency: 'INR',
           receipt,
@@ -90,7 +97,7 @@ export class PaymentService {
       currency: 'INR',
       planTier,
       billingCycle,
-      keyId: config.razorpay.keyId || 'rzp_test_mock_key',
+      keyId: keyId || 'rzp_test_mock_key',
     };
   }
 
@@ -130,10 +137,12 @@ export class PaymentService {
     }
 
     // 2. Cryptographic HMAC Signature Verification
-    if (razorpayClient && !config.razorpay.mock) {
-      const secret = config.razorpay.keySecret;
+    const razorpay = getRazorpayClient();
+    const keySecret = (process.env.RAZORPAY_KEY_SECRET || config.razorpay.keySecret || '').trim();
+
+    if (razorpay && keySecret && !config.razorpay.mock && !razorpay_order_id.startsWith('order_mock_')) {
       const payload = `${razorpay_order_id}|${razorpay_payment_id}`;
-      const generatedSignature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+      const generatedSignature = crypto.createHmac('sha256', keySecret).update(payload).digest('hex');
 
       const isSignatureValid = crypto.timingSafeEqual(
         Buffer.from(generatedSignature, 'utf-8'),
@@ -147,7 +156,7 @@ export class PaymentService {
 
       // 3. Server-to-Server Direct Verification with Razorpay API
       try {
-        const paymentDetails = await razorpayClient.payments.fetch(razorpay_payment_id);
+        const paymentDetails = await razorpay.payments.fetch(razorpay_payment_id);
         if (paymentDetails.status !== 'captured' && paymentDetails.status !== 'authorized') {
           throw new AppError(`Payment status is ${paymentDetails.status}, not completed.`, 400);
         }
@@ -303,8 +312,9 @@ export class PaymentService {
   }) {
     const amountInPaise = Math.round(amountInr * 100);
 
-    if (razorpayClient && !config.razorpay.mock) {
-      const paymentLink = await (razorpayClient as any).paymentLink.create({
+    const razorpay = getRazorpayClient();
+    if (razorpay && !config.razorpay.mock) {
+      const paymentLink = await (razorpay as any).paymentLink.create({
         amount: amountInPaise,
         currency: 'INR',
         accept_partial: false,

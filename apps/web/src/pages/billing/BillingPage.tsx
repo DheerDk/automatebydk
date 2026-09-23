@@ -57,13 +57,13 @@ export const BillingPage: React.FC = () => {
   const fetchBillingData = async () => {
     try {
       setLoading(true);
-      const [subRes, payRes] = await Promise.all([
-        api.get('/subscription').catch(() => ({ data: { data: null } })),
-        api.get('/payments/history').catch(() => ({ data: { data: [] } })),
+      const [subRes, payRes]: any = await Promise.all([
+        api.get('/subscription').catch(() => null),
+        api.get('/payments/history').catch(() => null),
       ]);
 
-      setSubscription(subRes.data?.data || null);
-      setPayments(payRes.data?.data || []);
+      setSubscription(subRes?.data || subRes || null);
+      setPayments(payRes?.data || payRes || []);
     } catch (err: any) {
       console.error('Failed to load billing details:', err);
     } finally {
@@ -140,13 +140,13 @@ export const BillingPage: React.FC = () => {
       setStatusMessage(null);
 
       // 1. Create Server-side Order
-      const res = await api.post('/payments/create-order', {
+      const res: any = await api.post('/payments/create-order', {
         planTier: plan.tier,
         billingCycle,
       });
 
-      const orderData = res.data?.data;
-      if (!orderData) {
+      const orderData = res?.data || res;
+      if (!orderData || !orderData.orderId) {
         throw new Error('Failed to create payment order');
       }
 
@@ -162,7 +162,7 @@ export const BillingPage: React.FC = () => {
           handler: async function (response: any) {
             try {
               // 2. Cryptographic Signature Verification
-              const verifyRes = await api.post('/payments/verify', {
+              const verifyRes: any = await api.post('/payments/verify', {
                 razorpay_order_id: response.razorpay_order_id || orderData.orderId,
                 razorpay_payment_id: response.razorpay_payment_id || `pay_${Date.now()}`,
                 razorpay_signature: response.razorpay_signature || 'verified_mock_sig',
@@ -172,13 +172,13 @@ export const BillingPage: React.FC = () => {
 
               setStatusMessage({
                 type: 'success',
-                text: verifyRes.data?.message || `Successfully upgraded to ${plan.name}!`,
+                text: verifyRes?.message || verifyRes?.data?.message || `Successfully upgraded to ${plan.name}!`,
               });
               fetchBillingData();
             } catch (verErr: any) {
               setStatusMessage({
                 type: 'error',
-                text: verErr.response?.data?.message || 'Payment verification failed.',
+                text: verErr?.response?.data?.message || verErr?.message || 'Payment verification failed.',
               });
             }
           },
@@ -202,7 +202,7 @@ export const BillingPage: React.FC = () => {
         rzp.open();
       } else {
         // Direct simulation verification if Razorpay JS unavailable
-        const verifyRes = await api.post('/payments/verify', {
+        const verifyRes: any = await api.post('/payments/verify', {
           razorpay_order_id: orderData.orderId,
           razorpay_payment_id: `pay_${Date.now()}`,
           razorpay_signature: 'verified_mock_sig',
@@ -212,7 +212,7 @@ export const BillingPage: React.FC = () => {
 
         setStatusMessage({
           type: 'success',
-          text: verifyRes.data?.message || `Successfully upgraded to ${plan.name}!`,
+          text: verifyRes?.message || verifyRes?.data?.message || `Successfully upgraded to ${plan.name}!`,
         });
         fetchBillingData();
       }
@@ -220,7 +220,7 @@ export const BillingPage: React.FC = () => {
       console.error('Payment start error:', err);
       setStatusMessage({
         type: 'error',
-        text: err.response?.data?.message || err.message || 'Payment initiation failed.',
+        text: err?.response?.data?.message || err?.message || 'Payment initiation failed.',
       });
     } finally {
       setPaying(false);

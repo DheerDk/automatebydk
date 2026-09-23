@@ -62,7 +62,7 @@ export const ProfilePage: React.FC = () => {
   const loadSubscriptionInfo = async () => {
     try {
       const res: any = await api.get('/subscription');
-      const payload = res.data?.data || res.data;
+      const payload = res?.data || res;
       if (payload) setSubData(payload);
     } catch (err) {
       console.error('Failed to load subscription:', err);

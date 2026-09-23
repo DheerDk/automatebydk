@@ -120,8 +120,8 @@ export const SettingsPage: React.FC = () => {
         planTier: targetTier,
         billingCycle: cycle,
       });
-      const orderData = res.data?.data;
-      if (!orderData) throw new Error('Could not create payment order');
+      const orderData = res?.data || res;
+      if (!orderData || !orderData.orderId) throw new Error('Could not create payment order');
 
       if ((window as any).Razorpay) {
         const options = {
@@ -144,9 +144,9 @@ export const SettingsPage: React.FC = () => {
               setIsRenewModalOpen(false);
               setIsUpgradeModalOpen(false);
               fetchSubscription();
-              alert(verifyRes.data?.message || `Successfully activated ${targetTier} plan!`);
+              alert(verifyRes?.message || verifyRes?.data?.message || `Successfully activated ${targetTier} plan!`);
             } catch (vErr: any) {
-              alert(vErr.response?.data?.message || 'Payment verification failed');
+              alert(vErr?.response?.data?.message || vErr?.message || 'Payment verification failed');
             }
           },
           prefill: {
@@ -170,7 +170,7 @@ export const SettingsPage: React.FC = () => {
         setIsRenewModalOpen(false);
         setIsUpgradeModalOpen(false);
         fetchSubscription();
-        alert(verifyRes.data?.message || `Successfully activated ${targetTier} plan!`);
+        alert(verifyRes?.message || verifyRes?.data?.message || `Successfully activated ${targetTier} plan!`);
       }
     } catch (err: any) {
       alert(err.response?.data?.message || err.message || 'Payment initiation failed');
