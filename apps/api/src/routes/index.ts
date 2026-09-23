@@ -104,6 +104,8 @@ tenantRouter.post('/messages/send', MessageController.sendMessage);
 // Automations
 tenantRouter.get('/automations', AutomationController.list);
 tenantRouter.post('/automations', AutomationController.create);
+tenantRouter.post('/automations/toggle-all', AutomationController.toggleAll);
+tenantRouter.patch('/automations/:id/toggle', AutomationController.toggleSingle);
 tenantRouter.put('/automations/:id', AutomationController.update);
 tenantRouter.delete('/automations/:id', AutomationController.delete);
 

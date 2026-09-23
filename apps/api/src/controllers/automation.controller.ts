@@ -124,4 +124,66 @@ export class AutomationController {
       next(error);
     }
   }
+
+  /**
+   * Master Toggle: Turn ALL automations ON / OFF with 1 click
+   */
+  public static async toggleAll(req: Request, res: Response, next: NextFunction) {
+    try {
+      const organizationId = req.organizationId!;
+      const { isActive } = req.body;
+
+      if (typeof isActive !== 'boolean') {
+        throw new AppError('isActive boolean is required', 400);
+      }
+
+      await prisma.automationRule.updateMany({
+        where: { organizationId },
+        data: { isActive },
+      });
+
+      return res.json({
+        success: true,
+        message: `All automations turned ${isActive ? 'ON' : 'OFF'} successfully`,
+        data: { isActive },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * 1-Click Single Automation ON / OFF Switch
+   */
+  public static async toggleSingle(req: Request, res: Response, next: NextFunction) {
+    try {
+      const organizationId = req.organizationId!;
+      const { id } = req.params;
+
+      const existing = await prisma.automationRule.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Automation rule not found', 404);
+      }
+
+      const updated = await prisma.automationRule.update({
+        where: { id },
+        data: { isActive: !existing.isActive },
+      });
+
+      return res.json({
+        success: true,
+        message: `Automation "${updated.name}" is now ${updated.isActive ? 'ACTIVE' : 'PAUSED'}`,
+        data: {
+          ...updated,
+          conditions: JSON.parse(updated.conditions || '{}'),
+          actions: JSON.parse(updated.actions || '[]'),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

@@ -31,6 +31,8 @@ export class AnalyticsController {
         leadsByStatus,
         topProducts,
         recentMessages,
+        recentLeads,
+        recentConversations,
       ] = await Promise.all([
         prisma.customer.count({ where: { organizationId } }),
         prisma.customer.count({
@@ -72,6 +74,18 @@ export class AnalyticsController {
           where: { organizationId, createdAt: { gte: startDate } },
           select: { createdAt: true, direction: true },
           orderBy: { createdAt: 'asc' },
+        }),
+        prisma.lead.findMany({
+          where: { organizationId },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          include: { customer: true },
+        }),
+        prisma.conversation.findMany({
+          where: { organizationId },
+          orderBy: { lastMessageAt: 'desc' },
+          take: 5,
+          include: { customer: true },
         }),
       ]);
 
@@ -130,6 +144,22 @@ export class AnalyticsController {
           },
           timeline: timelineData,
           funnel,
+          recentLeads: recentLeads.map((l) => ({
+            id: l.id,
+            title: l.notes || `WhatsApp Lead #${l.id.slice(-4)}`,
+            status: l.status,
+            estimatedValue: l.estimatedValue || 0,
+            customerName: l.customer?.name || l.customer?.phone || 'Customer',
+            customerPhone: l.customer?.phone || '',
+            createdAt: l.createdAt,
+          })),
+          recentConversations: recentConversations.map((c) => ({
+            id: c.id,
+            status: c.status,
+            lastMessageAt: c.lastMessageAt,
+            customerName: c.customer?.name || c.customer?.phone || 'Customer',
+            customerPhone: c.customer?.phone || '',
+          })),
           topProducts: topProducts.map((p) => ({
             id: p.id,
             name: p.name,
