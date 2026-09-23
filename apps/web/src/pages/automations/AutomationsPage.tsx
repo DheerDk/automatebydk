@@ -58,8 +58,8 @@ import {
   CornerDownRight,
   SlidersHorizontal,
   ChevronDown,
-  Laptop,
 } from 'lucide-react';
+import { ImageUploader } from '../../components/common/ImageUploader';
 
 interface FlowButton {
   id: string;
@@ -1388,18 +1388,12 @@ export const AutomationsPage: React.FC = () => {
               {/* INSPECTOR: WELCOME NODE */}
               {selectedNodeId === 'node_welcome' && (
                 <div className="space-y-3.5">
-                  <div>
-                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1">
-                      Header Flyer URL (Optional):
-                    </label>
-                    <input
-                      type="url"
-                      value={welcomeMediaUrl}
-                      onChange={(e) => setWelcomeMediaUrl(e.target.value)}
-                      placeholder="https://images.unsplash.com/..."
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-                    />
-                  </div>
+                  <ImageUploader
+                    value={welcomeMediaUrl}
+                    onChange={setWelcomeMediaUrl}
+                    label="Welcome Flyer / Header Image"
+                    description="Upload an image flyer from your computer or paste an image URL."
+                  />
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -1515,6 +1509,24 @@ export const AutomationsPage: React.FC = () => {
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white leading-relaxed focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>
+
+                  <ImageUploader
+                    value={selectedBranch.actions[0]?.mediaUrl || ''}
+                    onChange={(url) => {
+                      setBranches(
+                        branches.map((b) =>
+                          b.id === selectedBranch.id
+                            ? {
+                                ...b,
+                                actions: [{ ...b.actions[0], mediaUrl: url }],
+                              }
+                            : b
+                        )
+                      );
+                    }}
+                    label="Attached Branch Flyer (Optional)"
+                    description="Attach a promo flyer or product image for this quick reply."
+                  />
                 </div>
               )}
 

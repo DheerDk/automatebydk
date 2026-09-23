@@ -46,11 +46,11 @@ const fileFilter = (allowedTypes: string[]) => {
   };
 };
 
-// 1. Media Upload (Images up to 10MB)
+// 1. Media & Image Upload (Strict 5MB limit to prevent DDoS & storage exhaustion)
 export const mediaUploader = multer({
   storage: memoryStorage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: 5 * 1024 * 1024, // 5MB limit
     files: 1,
   },
   fileFilter: fileFilter([...ALLOWED_IMAGE_TYPES, ...ALLOWED_AUDIO_TYPES, ...ALLOWED_VIDEO_TYPES]),

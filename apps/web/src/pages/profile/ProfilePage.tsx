@@ -26,6 +26,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ImageUploader } from '../../components/common/ImageUploader';
 
 export const ProfilePage: React.FC = () => {
   const { user, currentOrganization, updateProfile, refreshUserData } = useAuth();
@@ -237,18 +238,12 @@ export const ProfilePage: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveProfile} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Avatar Image URL
-                </label>
-                <input
-                  type="url"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:border-emerald-500 outline-hidden"
-                />
-              </div>
+              <ImageUploader
+                value={avatarUrl}
+                onChange={setAvatarUrl}
+                label="Profile Picture / Avatar"
+                description="Upload an avatar photo from your device or paste a URL (Max 5MB • JPG, PNG, WEBP)."
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

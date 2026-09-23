@@ -15,6 +15,7 @@ import {
   Tag,
   Sparkles,
 } from 'lucide-react';
+import { ImageUploader } from '../../components/common/ImageUploader';
 
 export const ProductsPage: React.FC = () => {
   const { currency } = useTenant();
@@ -381,12 +382,11 @@ export const ProductsPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Image URLs (comma separated)</label>
-                <input
-                  type="text"
-                  value={formData.images}
-                  onChange={(e) => setFormData({ ...formData, images: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                <ImageUploader
+                  value={formData.images.split(',')[0]?.trim() || ''}
+                  onChange={(url) => setFormData({ ...formData, images: url })}
+                  label="Product Image"
+                  description="Upload a product photo or flyer (Max 5MB • JPG, PNG, WEBP)."
                 />
               </div>
 

@@ -28,6 +28,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ImageUploader } from '../../components/common/ImageUploader';
 
 export interface MessageTemplate {
   id: string;
@@ -746,16 +747,12 @@ export const TemplatesPage: React.FC = () => {
                   </div>
 
                   {/* Header Image Override */}
-                  <div className="space-y-1.5 pt-2 border-t border-slate-800">
-                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
-                      Optional Header Image / Flyer URL:
-                    </label>
-                    <input
-                      type="url"
+                  <div className="pt-2 border-t border-slate-800">
+                    <ImageUploader
                       value={customHeaderMediaUrl}
-                      onChange={(e) => setCustomHeaderMediaUrl(e.target.value)}
-                      placeholder="https://images.unsplash.com/photo-example.jpg"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                      onChange={setCustomHeaderMediaUrl}
+                      label="Header Image / Flyer Attachment (Optional)"
+                      description="Upload a flyer from your computer or paste an image URL to send with this template."
                     />
                   </div>
                 </div>
@@ -945,12 +942,11 @@ export const TemplatesPage: React.FC = () => {
                     )}
 
                     {headerType === 'IMAGE' && (
-                      <input
-                        type="url"
+                      <ImageUploader
                         value={headerMediaUrl}
-                        onChange={(e) => setHeaderMediaUrl(e.target.value)}
-                        placeholder="Image flyer URL (e.g. https://images.unsplash.com/...)"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                        onChange={setHeaderMediaUrl}
+                        label="Template Header Flyer"
+                        description="Upload a promo banner or flyer (Max 5MB • JPG, PNG, WEBP)."
                       />
                     )}
                   </div>
