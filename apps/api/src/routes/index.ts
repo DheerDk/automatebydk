@@ -18,6 +18,7 @@ import { OrganizationController } from '../controllers/organization.controller.j
 import { SuperAdminController } from '../controllers/superadmin.controller.js';
 import { SubscriptionController } from '../controllers/subscription.controller.js';
 import { AiController } from '../controllers/ai.controller.js';
+import { UserRole } from '@chatflow/shared';
 import { authenticate, requireTenant, requireRole, requireSuperAdmin } from '../middlewares/auth.js';
 import { validateRequest } from '../middlewares/validate.js';
 import {
@@ -58,10 +59,10 @@ tenantRouter.use(authenticate, requireTenant, generalApiLimiter);
 // Secure File Upload Engine (Images, Media, Contacts CSV)
 tenantRouter.use('/upload', uploadRoutes);
 
-// Subscription & Invoices
+// Subscription & Invoices (Protected: only owners/admins can modify billing)
 tenantRouter.get('/subscription', SubscriptionController.getSubscription);
-tenantRouter.post('/subscription/renew', SubscriptionController.renewSubscription);
-tenantRouter.post('/subscription/upgrade', SubscriptionController.upgradePlan);
+tenantRouter.post('/subscription/renew', requireRole(UserRole.BUSINESS_OWNER, UserRole.ADMIN), SubscriptionController.renewSubscription);
+tenantRouter.post('/subscription/upgrade', requireRole(UserRole.BUSINESS_OWNER, UserRole.ADMIN), SubscriptionController.upgradePlan);
 tenantRouter.get('/subscription/invoices', SubscriptionController.listInvoices);
 
 // Products
@@ -115,19 +116,19 @@ tenantRouter.post('/campaigns/:id/launch', campaignLimiter, CampaignController.l
 // Analytics
 tenantRouter.get('/analytics/dashboard', AnalyticsController.getDashboardStats);
 
-// Settings
+// Settings (Sensitive: only business owner & admins can change profile or WhatsApp credentials)
 tenantRouter.get('/settings', SettingsController.getSettings);
-tenantRouter.put('/settings/profile', SettingsController.updateBusinessProfile);
-tenantRouter.post('/settings/whatsapp', SettingsController.updateWhatsAppCredentials);
+tenantRouter.put('/settings/profile', requireRole(UserRole.BUSINESS_OWNER, UserRole.ADMIN), SettingsController.updateBusinessProfile);
+tenantRouter.post('/settings/whatsapp', requireRole(UserRole.BUSINESS_OWNER, UserRole.ADMIN), SettingsController.updateWhatsAppCredentials);
 
-// Team & Members
+// Team & Members (Protected: only business owner & admins can manage team)
 tenantRouter.get('/organization/members', OrganizationController.getMembers);
-tenantRouter.post('/organization/members', OrganizationController.inviteMember);
-tenantRouter.delete('/organization/members/:memberId', OrganizationController.removeMember);
+tenantRouter.post('/organization/members', requireRole(UserRole.BUSINESS_OWNER, UserRole.ADMIN), OrganizationController.inviteMember);
+tenantRouter.delete('/organization/members/:memberId', requireRole(UserRole.BUSINESS_OWNER, UserRole.ADMIN), OrganizationController.removeMember);
 
 // AI Sandbox & Test Search & Custom Business Agent Training (Rate Limited)
 tenantRouter.get('/ai/training', AiController.getTraining);
-tenantRouter.put('/ai/training', AiController.updateTraining);
+tenantRouter.put('/ai/training', requireRole(UserRole.BUSINESS_OWNER, UserRole.ADMIN), AiController.updateTraining);
 tenantRouter.post('/ai/test-agent', aiLimiter, AiController.testAgent);
 tenantRouter.post('/ai/test-search', aiLimiter, AiController.testSearch);
 tenantRouter.post('/ai/test-faq', aiLimiter, AiController.testFaq);

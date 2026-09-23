@@ -217,6 +217,24 @@ export class LeadController {
       const organizationId = req.organizationId!;
       const { customerId, productId, status = LeadStatus.NEW, source = 'MANUAL', assignedUserId, estimatedValue, notes } = req.body;
 
+      // Validate customer ownership
+      const customer = await prisma.customer.findFirst({
+        where: { id: customerId, organizationId },
+      });
+      if (!customer) {
+        throw new AppError('Customer not found in your organization', 404);
+      }
+
+      // Validate product ownership if provided
+      if (productId) {
+        const product = await prisma.product.findFirst({
+          where: { id: productId, organizationId },
+        });
+        if (!product) {
+          throw new AppError('Product not found in your organization', 404);
+        }
+      }
+
       const lead = await prisma.lead.create({
         data: {
           organizationId,

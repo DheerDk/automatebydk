@@ -96,7 +96,17 @@ export class TemplateController {
 
   public static async delete(req: Request, res: Response, next: NextFunction) {
     try {
+      const organizationId = req.organizationId!;
       const { id } = req.params;
+
+      const existing = await prisma.messageTemplate.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Template not found', 404);
+      }
+
       await prisma.messageTemplate.delete({ where: { id } });
       return res.json({ success: true, message: 'Template deleted' });
     } catch (error) {

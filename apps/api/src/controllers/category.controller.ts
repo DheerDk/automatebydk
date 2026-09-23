@@ -62,12 +62,20 @@ export class CategoryController {
       const { id } = req.params;
       const { name, description, imageUrl } = req.body;
 
+      const existing = await prisma.category.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Category not found', 404);
+      }
+
       const updated = await prisma.category.update({
         where: { id },
         data: {
-          name,
-          description: description || null,
-          imageUrl: imageUrl || null,
+          name: name ?? existing.name,
+          description: description !== undefined ? description : existing.description,
+          imageUrl: imageUrl !== undefined ? imageUrl : existing.imageUrl,
         },
       });
 
@@ -85,6 +93,14 @@ export class CategoryController {
     try {
       const organizationId = req.organizationId!;
       const { id } = req.params;
+
+      const existing = await prisma.category.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Category not found', 404);
+      }
 
       await prisma.category.delete({
         where: { id },

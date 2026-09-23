@@ -77,10 +77,11 @@ export const errorHandler = (
     });
   }
 
-  // Generic Unhandled Error
+  // Generic Unhandled Error (Conceals internal stack/DB errors in production)
+  const isProd = process.env.NODE_ENV === 'production';
   return res.status(500).json({
     success: false,
-    message: err.message || 'Internal server error',
+    message: isProd ? 'An unexpected internal server error occurred. Please try again later.' : (err.message || 'Internal server error'),
     code: 'INTERNAL_SERVER_ERROR',
   });
 };

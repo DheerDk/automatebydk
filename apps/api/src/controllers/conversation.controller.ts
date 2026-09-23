@@ -138,6 +138,14 @@ export class ConversationController {
       const { id } = req.params;
       const { status, assignedUserId } = req.body;
 
+      const existing = await prisma.conversation.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Conversation not found', 404);
+      }
+
       const updateData: any = {};
       if (status !== undefined) updateData.status = status;
       if (assignedUserId !== undefined) updateData.assignedUserId = assignedUserId || null;

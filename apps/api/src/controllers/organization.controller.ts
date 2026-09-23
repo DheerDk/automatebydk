@@ -80,13 +80,29 @@ export class OrganizationController {
           organizationId,
           role: role as string,
         },
-        include: { user: true },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              avatarUrl: true,
+              createdAt: true,
+            },
+          },
+        },
       });
 
       return res.status(201).json({
         success: true,
         message: 'Team member added successfully',
-        data: membership,
+        data: {
+          id: membership.id,
+          role: membership.role,
+          createdAt: membership.createdAt,
+          user: membership.user,
+        },
       });
     } catch (error) {
       next(error);
@@ -103,11 +119,16 @@ export class OrganizationController {
       });
 
       if (!membership) {
-        throw new AppError('Membership not found', 404);
+        throw new AppError('Membership not found in this organization', 404);
       }
 
       if (membership.role === UserRole.BUSINESS_OWNER) {
         throw new AppError('Cannot remove the primary business owner', 400);
+      }
+
+      // Prevent user from removing themselves if they are an admin trying to lock the workspace
+      if (membership.userId === req.user?.id) {
+        throw new AppError('You cannot remove yourself from the organization here.', 400);
       }
 
       await prisma.membership.delete({ where: { id: memberId } });

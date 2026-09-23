@@ -64,6 +64,14 @@ export class AutomationController {
       const { id } = req.params;
       const { name, description, trigger, conditions, actions, isActive } = req.body;
 
+      const existing = await prisma.automationRule.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Automation rule not found', 404);
+      }
+
       const updateData: any = {};
       if (name !== undefined) updateData.name = name;
       if (description !== undefined) updateData.description = description;
@@ -95,6 +103,14 @@ export class AutomationController {
     try {
       const organizationId = req.organizationId!;
       const { id } = req.params;
+
+      const existing = await prisma.automationRule.findFirst({
+        where: { id, organizationId },
+      });
+
+      if (!existing) {
+        throw new AppError('Automation rule not found', 404);
+      }
 
       await prisma.automationRule.delete({
         where: { id },

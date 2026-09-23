@@ -35,10 +35,16 @@ export class SettingsController {
 
       const maskedWa = whatsappAccount
         ? {
-            ...whatsappAccount,
+            id: whatsappAccount.id,
+            status: whatsappAccount.status,
+            displayPhoneNumber: whatsappAccount.displayPhoneNumber,
+            phoneNumberId: whatsappAccount.phoneNumberId,
+            businessAccountId: whatsappAccount.businessAccountId,
+            lastWebhookReceivedAt: whatsappAccount.lastWebhookReceivedAt,
             accessToken: whatsappAccount.accessToken && whatsappAccount.accessToken.length > 8
               ? `${whatsappAccount.accessToken.substring(0, 4)}...${whatsappAccount.accessToken.substring(whatsappAccount.accessToken.length - 4)}`
               : '••••••••••••••••',
+            verifyToken: whatsappAccount.verifyToken ? '••••••••••••••••' : null,
             isConfigured: whatsappAccount.status === 'CONNECTED' || (whatsappAccount.phoneNumberId && whatsappAccount.phoneNumberId !== 'pending_setup'),
           }
         : null;
