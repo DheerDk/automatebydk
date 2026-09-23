@@ -105,7 +105,8 @@ export const SettingsPage: React.FC = () => {
   const fetchSubscription = async () => {
     try {
       const res: any = await api.get('/subscription');
-      if (res.data) setSubData(res.data);
+      const payload = res.data?.data || res.data;
+      if (payload) setSubData(payload);
     } catch (err) {
       console.error('Failed to load subscription:', err);
     }
