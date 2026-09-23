@@ -24,13 +24,23 @@ interface SessionState {
 
 export class BaileysService {
   private static sessions: Map<string, SessionState> = new Map();
-  private static sessionsBaseDir = path.resolve(process.cwd(), '.sessions');
+
+  /**
+   * Resolve persistent sessions directory path reliably
+   */
+  public static getSessionsBaseDir(): string {
+    const rootDir = process.cwd().includes('apps') ? path.resolve(process.cwd(), '..', '..', '.sessions') : path.resolve(process.cwd(), '.sessions');
+    if (!fs.existsSync(rootDir)) {
+      fs.mkdirSync(rootDir, { recursive: true });
+    }
+    return rootDir;
+  }
 
   /**
    * Ensure sessions directory exists
    */
   private static ensureSessionDir(orgId: string): string {
-    const dir = path.join(this.sessionsBaseDir, orgId);
+    const dir = path.join(this.getSessionsBaseDir(), orgId);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -290,7 +300,7 @@ export class BaileysService {
 
     // If session was closed in memory but credentials exist on disk, attempt quick auto-reconnect
     if (!session || session.status !== 'CONNECTED' || !session.sock) {
-      const sessionDir = path.join(this.sessionsBaseDir, organizationId);
+      const sessionDir = path.join(this.getSessionsBaseDir(), organizationId);
       if (fs.existsSync(path.join(sessionDir, 'creds.json'))) {
         logger.info(`[Baileys] Session disconnected in memory, auto-resuming for org ${organizationId}...`);
         await this.initSession(organizationId);
@@ -382,7 +392,7 @@ export class BaileysService {
       }
     }
 
-    const sessionDir = path.join(this.sessionsBaseDir, organizationId);
+    const sessionDir = path.join(this.getSessionsBaseDir(), organizationId);
     if (fs.existsSync(sessionDir)) {
       fs.rmSync(sessionDir, { recursive: true, force: true });
     }
@@ -410,7 +420,7 @@ export class BaileysService {
     if (session?.status === 'CONNECTED' && !!session.sock) {
       return true;
     }
-    const sessionDir = path.join(this.sessionsBaseDir, organizationId);
+    const sessionDir = path.join(this.getSessionsBaseDir(), organizationId);
     if (fs.existsSync(path.join(sessionDir, 'creds.json'))) {
       return true;
     }
@@ -429,10 +439,11 @@ export class BaileysService {
     logger.info('🛡️ [Baileys] Started 24/7 persistent WhatsApp connection watchdog.');
     this.watchdogInterval = setInterval(async () => {
       try {
-        if (!fs.existsSync(this.sessionsBaseDir)) return;
-        const orgDirs = fs.readdirSync(this.sessionsBaseDir);
+        const baseDir = this.getSessionsBaseDir();
+        if (!fs.existsSync(baseDir)) return;
+        const orgDirs = fs.readdirSync(baseDir);
         for (const orgId of orgDirs) {
-          const credsPath = path.join(this.sessionsBaseDir, orgId, 'creds.json');
+          const credsPath = path.join(baseDir, orgId, 'creds.json');
           if (fs.existsSync(credsPath)) {
             const currentSession = this.sessions.get(orgId);
             const isAlive = currentSession && currentSession.sock && (currentSession.status === 'CONNECTED' || currentSession.status === 'CONNECTING');
@@ -455,11 +466,12 @@ export class BaileysService {
    * Auto-resume all saved Baileys sessions on server boot and launch 24/7 watchdog
    */
   public static async initAllSavedSessions() {
-    if (!fs.existsSync(this.sessionsBaseDir)) return;
+    const baseDir = this.getSessionsBaseDir();
+    if (!fs.existsSync(baseDir)) return;
     try {
-      const orgDirs = fs.readdirSync(this.sessionsBaseDir);
+      const orgDirs = fs.readdirSync(baseDir);
       for (const orgId of orgDirs) {
-        const credsPath = path.join(this.sessionsBaseDir, orgId, 'creds.json');
+        const credsPath = path.join(baseDir, orgId, 'creds.json');
         if (fs.existsSync(credsPath)) {
           logger.info(`[Baileys] 🔄 Auto-resuming WhatsApp QR session for organization: ${orgId}`);
           await this.initSession(orgId);

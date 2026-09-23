@@ -258,7 +258,7 @@ export class WebhookController {
     let isExcluded = false;
 
     if (settings) {
-      // 1. Check blacklist of excluded numbers (family / personal friends)
+      // Check blacklist of explicitly excluded numbers (family / personal friends)
       if (settings.excludedNumbers && typeof settings.excludedNumbers === 'string') {
         const blacklist = settings.excludedNumbers
           .split(',')
@@ -273,19 +273,9 @@ export class WebhookController {
           }
         }
       }
-
-      // 2. Check "Only Unsaved Contacts" filter
-      if (!isExcluded && settings.onlyUnsavedContacts) {
-        // If the contact on device has a real named title (not a generic fallback like Customer +...)
-        const isNamedContact = name && !name.startsWith('Customer +') && !name.startsWith('+') && !name.startsWith('Customer ');
-        if (isNamedContact) {
-          isExcluded = true;
-          logger.info(`[Privacy Filter] Ignored automated replies for saved device contact: ${name} (${normalizedPhone})`);
-        }
-      }
     }
 
-    // If contact is excluded from automation, exit early without sending bot replies
+    // If contact is explicitly blacklisted, exit early without sending bot replies
     if (isExcluded) {
       return {
         handledBy: 'PERSONAL_FILTER_EXCLUDED',
@@ -293,7 +283,7 @@ export class WebhookController {
       };
     }
 
-    // 4. Trigger automations for KEYWORD_MATCH / MESSAGE_RECEIVED
+    // 4. Trigger automations for KEYWORD_MATCH / MESSAGE_RECEIVED / GREETING
     const autoResult = await AutomationService.processRules({
       organizationId,
       trigger: AutomationTrigger.MESSAGE_RECEIVED,
@@ -302,7 +292,8 @@ export class WebhookController {
       messageText: text,
     });
 
-    if (autoResult.executed && autoResult.outgoingResponse) {
+    if (autoResult.executed) {
+      logger.info(`[Automation Executed] Matched rule "${autoResult.matchedRule?.name || 'Rule'}" for ${customer.name} (${customer.phone})`);
       return {
         conversation,
         customer,
