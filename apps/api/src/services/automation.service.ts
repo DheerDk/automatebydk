@@ -79,7 +79,8 @@ export class AutomationService {
           for (const branch of parsedFlowData.branches) {
             const bVal = String(branch.value || '').trim().toLowerCase();
             const bTitle = String(branch.title || '').trim().toLowerCase();
-            
+            const bId = String(branch.id || '').trim().toLowerCase();
+
             // Check condition types
             if (branch.conditionType === 'NUMBER_CHOICE' || branch.conditionType === 'EQUALS') {
               if (
@@ -87,14 +88,16 @@ export class AutomationService {
                 normalizedMsg === `option ${bVal}` ||
                 normalizedMsg === `${bVal}.` ||
                 normalizedMsg === `#${bVal}` ||
-                normalizedMsg === bTitle
+                normalizedMsg === bTitle ||
+                normalizedMsg === bId ||
+                normalizedMsg.includes(`choice_${bVal}`)
               ) {
                 matches = true;
                 matchedBranchActions = branch.actions || [];
                 break;
               }
             } else if (branch.conditionType === 'CONTAINS') {
-              if (bVal && normalizedMsg.includes(bVal)) {
+              if (bVal && (normalizedMsg.includes(bVal) || normalizedMsg.includes(bTitle))) {
                 matches = true;
                 matchedBranchActions = branch.actions || [];
                 break;
@@ -107,10 +110,10 @@ export class AutomationService {
           }
         }
 
-        // 2. If not matched to a specific branch, check main trigger keywords (e.g. greeting or menu trigger)
+        // 2. If not matched to a specific branch, check main trigger keywords
         if (!matches) {
           if (rule.trigger === AutomationTrigger.GREETING) {
-            const greetingKeywords = ['hi', 'hello', 'hey', 'start', 'menu', 'namaste', 'help'];
+            const greetingKeywords = ['hi', 'hello', 'hey', 'start', 'menu', 'namaste', 'help', 'info'];
             if (conditions.keyword) {
               const extra = String(conditions.keyword).split(',').map((k) => k.trim().toLowerCase());
               greetingKeywords.push(...extra);
@@ -133,7 +136,6 @@ export class AutomationService {
               }
             }
           } else if (rule.trigger === AutomationTrigger.MESSAGE_RECEIVED) {
-            // General message trigger: if conditions.keyword exists, check it
             if (conditions.keyword) {
               const keywords = String(conditions.keyword)
                 .split(',')
@@ -160,21 +162,19 @@ export class AutomationService {
         let actionsToExecute: any[] = [];
 
         if (matchedBranchActions && matchedBranchActions.length > 0) {
-          // Customer chose a specific branch option (e.g. 1, 2, 3)
           actionsToExecute = matchedBranchActions;
         } else if (defaultFlowAction && defaultFlowAction.text) {
-          // Sent greeting or menu keyword -> execute default welcome menu
           actionsToExecute = [
             {
               type: defaultFlowAction.type || AutomationActionType.SEND_MESSAGE,
               payload: {
                 text: defaultFlowAction.text,
                 mediaUrl: defaultFlowAction.mediaUrl,
+                buttons: defaultFlowAction.buttons,
               },
             },
           ];
         } else {
-          // Standard actions stored on rule
           try {
             actionsToExecute = typeof rule.actions === 'string' ? JSON.parse(rule.actions) : (rule.actions || []);
           } catch {
@@ -186,7 +186,6 @@ export class AutomationService {
         let lastReplyText: string | undefined = undefined;
 
         for (const action of actionsToExecute) {
-          // Normalize action format
           const formattedAction = {
             type: action.type || AutomationActionType.SEND_MESSAGE,
             payload: action.payload || action,
@@ -246,19 +245,22 @@ export class AutomationService {
           break;
 
         case 'SEND_CATALOG':
-        case 'SEND_PRODUCTS':
-          // Fetch active store products
+        case 'SEND_PRODUCTS': {
           const products = await prisma.product.findMany({
             where: { organizationId, isActive: true },
             take: 4,
           });
 
           let catalogMsg = '🛍️ *Trending Products Catalog:*\n\n';
-          products.forEach((p, idx) => {
-            const price = p.discountPrice ? `₹${p.discountPrice} (was ₹${p.price})` : `₹${p.price}`;
-            catalogMsg += `${idx + 1}. *${p.name}* - ${price}\n${p.description || ''}\n\n`;
-          });
-          catalogMsg += '👉 Reply with product name to order now!';
+          if (products.length > 0) {
+            products.forEach((p, idx) => {
+              const price = p.discountPrice ? `₹${p.discountPrice} (was ₹${p.price})` : `₹${p.price}`;
+              catalogMsg += `${idx + 1}. *${p.name}* - ${price}\n${p.description || ''}\n\n`;
+            });
+            catalogMsg += '👉 Reply with product name to place your order!';
+          } else {
+            catalogMsg += '✨ Our online store catalog is currently being updated. Visit our official website for full listings!';
+          }
 
           return await WhatsAppService.sendMessage({
             organizationId,
@@ -266,19 +268,20 @@ export class AutomationService {
             content: catalogMsg,
             mediaUrl: products[0]?.images ? JSON.parse(products[0].images)[0] : undefined,
             buttons: [
-              { id: '1', title: '🛍️ View More Products' },
+              { id: '1', title: '🛍️ View Products' },
               { id: '3', title: '🏷️ VIP Deals' },
               { id: '4', title: '🧑‍💼 Talk to Support' },
             ],
             conversationId,
             customerId: customer.id,
           });
+        }
 
         case 'SEND_LOCATION': {
           const settings = await prisma.businessSettings.findUnique({
             where: { organizationId },
           });
-          const storeAddress = payload.address || settings?.address || 'Main Fashion & Electronics Store, MG Road';
+          const storeAddress = payload.address || settings?.address || 'Main Commercial Center, MG Road';
           const storeHours = settings?.businessHours || 'Mon-Sat (10:00 AM - 09:00 PM)';
           const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(storeAddress)}`;
 
@@ -391,10 +394,11 @@ export class AutomationService {
           break;
 
         default:
-          break;
+          logger.warn(`Unknown action type: ${type}`);
       }
     } catch (err) {
-      logger.error('Error executing automation action:', { action, err });
+      logger.error('Error executing automation action:', err);
     }
+    return null;
   }
 }

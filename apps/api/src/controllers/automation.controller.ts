@@ -12,11 +12,23 @@ export class AutomationController {
         orderBy: { createdAt: 'desc' },
       });
 
-      const formatted = automations.map((a) => ({
-        ...a,
-        conditions: JSON.parse(a.conditions || '{}'),
-        actions: JSON.parse(a.actions || '[]'),
-      }));
+      const formatted = automations.map((a) => {
+        let parsedFlowData = null;
+        if (a.flowData) {
+          try {
+            parsedFlowData = typeof a.flowData === 'string' ? JSON.parse(a.flowData) : a.flowData;
+          } catch {
+            parsedFlowData = null;
+          }
+        }
+
+        return {
+          ...a,
+          conditions: JSON.parse(a.conditions || '{}'),
+          actions: JSON.parse(a.actions || '[]'),
+          flowData: parsedFlowData,
+        };
+      });
 
       return res.json({
         success: true,
@@ -30,7 +42,7 @@ export class AutomationController {
   public static async create(req: Request, res: Response, next: NextFunction) {
     try {
       const organizationId = req.organizationId!;
-      const { name, description, trigger, conditions = {}, actions = [], isActive = true } = req.body;
+      const { name, description, trigger, conditions = {}, actions = [], flowData, isActive = true } = req.body;
 
       const rule = await prisma.automationRule.create({
         data: {
@@ -40,9 +52,17 @@ export class AutomationController {
           trigger,
           conditions: JSON.stringify(conditions),
           actions: JSON.stringify(actions),
+          flowData: flowData ? JSON.stringify(flowData) : null,
           isActive,
         },
       });
+
+      let parsedFlowData = null;
+      if (rule.flowData) {
+        try {
+          parsedFlowData = JSON.parse(rule.flowData);
+        } catch {}
+      }
 
       return res.status(201).json({
         success: true,
@@ -51,6 +71,7 @@ export class AutomationController {
           ...rule,
           conditions: JSON.parse(rule.conditions),
           actions: JSON.parse(rule.actions),
+          flowData: parsedFlowData,
         },
       });
     } catch (error) {
@@ -62,7 +83,7 @@ export class AutomationController {
     try {
       const organizationId = req.organizationId!;
       const { id } = req.params;
-      const { name, description, trigger, conditions, actions, isActive } = req.body;
+      const { name, description, trigger, conditions, actions, flowData, isActive } = req.body;
 
       const existing = await prisma.automationRule.findFirst({
         where: { id, organizationId },
@@ -78,12 +99,20 @@ export class AutomationController {
       if (trigger !== undefined) updateData.trigger = trigger;
       if (conditions !== undefined) updateData.conditions = JSON.stringify(conditions);
       if (actions !== undefined) updateData.actions = JSON.stringify(actions);
+      if (flowData !== undefined) updateData.flowData = flowData ? JSON.stringify(flowData) : null;
       if (isActive !== undefined) updateData.isActive = isActive;
 
       const updated = await prisma.automationRule.update({
         where: { id },
         data: updateData,
       });
+
+      let parsedFlowData = null;
+      if (updated.flowData) {
+        try {
+          parsedFlowData = JSON.parse(updated.flowData);
+        } catch {}
+      }
 
       return res.json({
         success: true,
@@ -92,6 +121,7 @@ export class AutomationController {
           ...updated,
           conditions: JSON.parse(updated.conditions),
           actions: JSON.parse(updated.actions),
+          flowData: parsedFlowData,
         },
       });
     } catch (error) {
@@ -173,6 +203,13 @@ export class AutomationController {
         data: { isActive: !existing.isActive },
       });
 
+      let parsedFlowData = null;
+      if (updated.flowData) {
+        try {
+          parsedFlowData = JSON.parse(updated.flowData);
+        } catch {}
+      }
+
       return res.json({
         success: true,
         message: `Automation "${updated.name}" is now ${updated.isActive ? 'ACTIVE' : 'PAUSED'}`,
@@ -180,6 +217,7 @@ export class AutomationController {
           ...updated,
           conditions: JSON.parse(updated.conditions || '{}'),
           actions: JSON.parse(updated.actions || '[]'),
+          flowData: parsedFlowData,
         },
       });
     } catch (error) {
