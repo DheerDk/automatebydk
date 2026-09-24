@@ -5,6 +5,7 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
   WAMessage,
   generateWAMessageFromContent,
+  prepareWAMessageMedia,
   proto,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
@@ -344,8 +345,8 @@ export class BaileysService {
       });
     }
 
-    // Try sending native interactive button cards if buttons are provided and no location/media
-    if (buttons && buttons.length > 0 && !location && !mediaUrl) {
+    // Try sending native interactive button cards if buttons are provided and no location
+    if (buttons && buttons.length > 0 && !location) {
       try {
         const interactiveButtons = buttons.map((b: any, idx: number) => {
           const btnTitle = b.title || b.text || `Option ${idx + 1}`;
@@ -369,6 +370,31 @@ export class BaileysService {
           };
         });
 
+        let headerObj: any = {
+          title: '',
+          subtitle: '',
+          hasMediaAttachment: false,
+        };
+
+        if (mediaUrl && (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) && session.sock?.waUploadToServer) {
+          try {
+            const media = await prepareWAMessageMedia(
+              { image: { url: mediaUrl } },
+              { upload: session.sock.waUploadToServer }
+            );
+            if (media?.imageMessage) {
+              headerObj = {
+                title: '',
+                subtitle: '',
+                hasMediaAttachment: true,
+                imageMessage: media.imageMessage,
+              };
+            }
+          } catch (mediaErr: any) {
+            logger.warn(`[Baileys] Media header prep failed: ${mediaErr.message}`);
+          }
+        }
+
         const interactiveMsg = generateWAMessageFromContent(
           jid,
           {
@@ -385,11 +411,7 @@ export class BaileysService {
                   footer: proto.Message.InteractiveMessage.Footer.create({
                     text: '⚡ Tap button or reply with number',
                   }),
-                  header: proto.Message.InteractiveMessage.Header.create({
-                    title: '',
-                    subtitle: '',
-                    hasMediaAttachment: false,
-                  }),
+                  header: proto.Message.InteractiveMessage.Header.create(headerObj),
                   nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
                     buttons: interactiveButtons,
                   }),
