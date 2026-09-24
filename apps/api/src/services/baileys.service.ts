@@ -285,7 +285,7 @@ export class BaileysService {
   }
 
   /**
-   * Send outbound message via active Baileys session (Text, Image, Location, Buttons)
+   * Send outbound message via active Baileys session (Text, Image, Location, Buttons, List)
    */
   public static async sendMessage(params: {
     organizationId: string;
@@ -293,9 +293,18 @@ export class BaileysService {
     content: string;
     mediaUrl?: string;
     location?: { latitude: number; longitude: number; name?: string; address?: string };
+    header?: string;
+    footer?: string;
     buttons?: Array<{ id: string; title: string }>;
+    list?: {
+      buttonText: string;
+      sections: Array<{
+        title: string;
+        rows: Array<{ id: string; title: string; description?: string }>;
+      }>;
+    };
   }): Promise<{ whatsappMessageId: string; success: boolean }> {
-    const { organizationId, to, content, mediaUrl, location, buttons } = params;
+    const { organizationId, to, content, mediaUrl, location, header, footer, buttons, list } = params;
     let session = this.sessions.get(organizationId);
 
     // If session was closed in memory but credentials exist on disk, attempt quick auto-reconnect
@@ -333,13 +342,31 @@ export class BaileysService {
 
     let sentMsg: any;
 
-    // Append quick interactive action buttons cleanly
+    // Build beautifully styled content with headers, interactive buttons, list items, and footers
     let formattedContent = content;
+    if (header) {
+      formattedContent = `*${header}*\n\n${formattedContent}`;
+    }
+
     if (buttons && buttons.length > 0) {
       formattedContent += `\n\n👇 *Quick Options:*`;
       buttons.forEach((b: any) => {
-        formattedContent += `\n▶️ *${b.title || b.text}*`;
+        formattedContent += `\n🔘 *${b.title || b.text}*`;
       });
+    }
+
+    if (list && list.sections && list.sections.length > 0) {
+      formattedContent += `\n\n📋 *${list.buttonText || 'Menu Options'}:*`;
+      list.sections.forEach((sec) => {
+        if (sec.title) formattedContent += `\n\n📌 *${sec.title}*`;
+        (sec.rows || []).forEach((row, i) => {
+          formattedContent += `\n  ${i + 1}️⃣ *${row.title}*${row.description ? `\n     ↳ _${row.description}_` : ''}`;
+        });
+      });
+    }
+
+    if (footer) {
+      formattedContent += `\n\n_${footer}_`;
     }
 
     if (location) {

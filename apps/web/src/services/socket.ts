@@ -52,6 +52,24 @@ class SocketService {
     this.socket?.off(event, callback);
   }
 
+  public onMessage(callback: (msg: any) => void) {
+    this.socket?.on('message:new', callback);
+    this.socket?.on('message:received', callback);
+  }
+
+  public offMessage(callback?: (msg: any) => void) {
+    this.socket?.off('message:new', callback);
+    this.socket?.off('message:received', callback);
+  }
+
+  public onConversationUpdated(callback: (conv: any) => void) {
+    this.socket?.on('conversation:updated', callback);
+  }
+
+  public offConversationUpdated(callback?: (conv: any) => void) {
+    this.socket?.off('conversation:updated', callback);
+  }
+
   public disconnect() {
     this.socket?.disconnect();
     this.socket = null;

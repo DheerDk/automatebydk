@@ -28,4 +28,10 @@ router.get('/history', PaymentController.listPaymentHistory);
 // 4. Create WhatsApp Store Payment Link for Customers
 router.post('/store-link', PaymentController.createStorePaymentLink);
 
+// 5. Send In-Chat WhatsApp Payment Link & Interactive Checkout Card
+router.post('/in-chat-link', PaymentController.sendInChatPaymentLink);
+
+// 6. List In-Chat Customer Orders
+router.get('/orders', PaymentController.listStoreOrders);
+
 export default router;

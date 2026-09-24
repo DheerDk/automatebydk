@@ -60,6 +60,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { ImageUploader } from '../../components/common/ImageUploader';
+import { DripSequenceManager } from '../../components/drip/DripSequenceManager';
 
 interface FlowButton {
   id: string;
@@ -620,7 +621,7 @@ const INDUSTRY_TEMPLATES = [
 ];
 
 export const AutomationsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'studio' | 'recipes' | 'rules' | 'privacy'>('studio');
+  const [activeTab, setActiveTab] = useState<'studio' | 'drip' | 'recipes' | 'rules' | 'privacy'>('studio');
   const [rules, setRules] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
@@ -1090,6 +1091,18 @@ export const AutomationsPage: React.FC = () => {
         >
           <GitBranch className="w-4 h-4" />
           <span>Interactive Visual Studio</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('drip')}
+          className={`pb-3 font-bold text-sm flex items-center gap-2 border-b-2 whitespace-nowrap transition cursor-pointer ${
+            activeTab === 'drip'
+              ? 'border-emerald-500 text-emerald-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Clock className="w-4 h-4 text-emerald-400" />
+          <span>⏱️ Abandoned Inquiry Drip Sequences</span>
         </button>
 
         <button
@@ -1811,6 +1824,11 @@ export const AutomationsPage: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB: DRIP FOLLOW-UP SEQUENCES */}
+      {activeTab === 'drip' && (
+        <DripSequenceManager />
       )}
 
       {/* TAB 4: PRIVACY & EXCLUDED NUMBERS */}

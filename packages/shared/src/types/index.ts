@@ -157,3 +157,61 @@ export interface CustomFaqItem {
   category?: string;
 }
 
+// Interactive WhatsApp Message Structures
+export interface WhatsAppButton {
+  id: string;
+  title: string;
+}
+
+export interface WhatsAppListRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface WhatsAppListSection {
+  title: string;
+  rows: WhatsAppListRow[];
+}
+
+export interface WhatsAppInteractiveButtonsPayload {
+  type: 'button';
+  header?: string;
+  body: string;
+  footer?: string;
+  buttons: WhatsAppButton[]; // Max 3
+}
+
+export interface WhatsAppInteractiveListPayload {
+  type: 'list';
+  header?: string;
+  body: string;
+  footer?: string;
+  buttonText: string; // Action button label e.g., "Select Option"
+  sections: WhatsAppListSection[]; // Max 10 rows total
+}
+
+// Store & In-Chat Checkout Order Status
+export enum StoreOrderStatus {
+  PENDING = 'PENDING',
+  PAID = 'PAID',
+  CANCELLED = 'CANCELLED',
+  REFUNDED = 'REFUNDED',
+}
+
+// Drip Sequences & Automated Inactivity Follow-ups
+export enum DripTriggerType {
+  LEAD_STATUS = 'LEAD_STATUS',
+  PRODUCT_INQUIRY = 'PRODUCT_INQUIRY',
+  INACTIVITY = 'INACTIVITY',
+  MANUAL = 'MANUAL',
+}
+
+export enum DripEnrollmentStatus {
+  ACTIVE = 'ACTIVE',
+  COMPLETED = 'COMPLETED',
+  CANCELLED_REPLIED = 'CANCELLED_REPLIED',
+  CANCELLED_PURCHASED = 'CANCELLED_PURCHASED',
+  PAUSED = 'PAUSED',
+}
+

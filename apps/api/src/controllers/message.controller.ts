@@ -9,7 +9,17 @@ export class MessageController {
   public static async sendMessage(req: Request, res: Response, next: NextFunction) {
     try {
       const organizationId = req.organizationId!;
-      const { conversationId, content, type = MessageType.TEXT, mediaUrl, productId } = req.body;
+      const {
+        conversationId,
+        content,
+        type = MessageType.TEXT,
+        mediaUrl,
+        productId,
+        header,
+        footer,
+        buttons,
+        list,
+      } = req.body;
 
       const conversation = await prisma.conversation.findFirst({
         where: { id: conversationId, organizationId },
@@ -22,7 +32,7 @@ export class MessageController {
 
       let outgoingContent = content;
       let finalMediaUrl = mediaUrl;
-      let metadata: any = null;
+      let metadata: any = {};
 
       if (productId) {
         const product = await prisma.product.findFirst({
@@ -36,14 +46,30 @@ export class MessageController {
         }
       }
 
+      if (buttons && buttons.length > 0) {
+        metadata.interactiveType = 'BUTTONS';
+        metadata.buttons = buttons;
+        if (header) metadata.header = header;
+        if (footer) metadata.footer = footer;
+      } else if (list && list.sections && list.sections.length > 0) {
+        metadata.interactiveType = 'LIST';
+        metadata.list = list;
+        if (header) metadata.header = header;
+        if (footer) metadata.footer = footer;
+      }
+
       // Send through WhatsApp Service
       const waResult = await WhatsAppService.sendMessage({
         organizationId,
         to: conversation.customer.phone,
         content: outgoingContent,
-        type: type as MessageType,
+        type: (buttons?.length || list?.sections?.length) ? MessageType.INTERACTIVE : (type as MessageType),
         mediaUrl: finalMediaUrl,
-        metadata,
+        header,
+        footer,
+        buttons,
+        list,
+        metadata: Object.keys(metadata).length > 0 ? metadata : null,
       });
 
       // Save message in DB
@@ -53,11 +79,11 @@ export class MessageController {
           conversationId,
           customerId: conversation.customerId,
           direction: MessageDirection.OUTBOUND,
-          type: type as string,
+          type: (buttons?.length || list?.sections?.length) ? MessageType.INTERACTIVE : (type as string),
           status: waResult.status,
           content: outgoingContent,
           mediaUrl: finalMediaUrl,
-          metadata: metadata ? JSON.stringify(metadata) : null,
+          metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null,
           whatsappMessageId: waResult.whatsappMessageId,
         },
       });
@@ -73,7 +99,7 @@ export class MessageController {
 
       const formattedMessage = {
         ...message,
-        metadata: metadata || null,
+        metadata: Object.keys(metadata).length > 0 ? metadata : null,
       };
 
       // Real-time socket emit

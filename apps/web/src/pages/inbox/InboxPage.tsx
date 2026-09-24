@@ -22,7 +22,15 @@ import {
   ArrowRight,
   ShieldCheck,
   AlertTriangle,
+  CreditCard,
+  List,
+  ExternalLink,
+  ChevronDown,
+  QrCode,
 } from 'lucide-react';
+import { InteractiveButtonsModal } from '../../components/inbox/InteractiveButtonsModal';
+import { InteractiveListModal } from '../../components/inbox/InteractiveListModal';
+import { PaymentLinkModal } from '../../components/inbox/PaymentLinkModal';
 
 const LEAD_STATUS_OPTIONS = [
   'NEW',
@@ -45,6 +53,10 @@ export const InboxPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [isProductPickerOpen, setIsProductPickerOpen] = useState(false);
+  const [isButtonsModalOpen, setIsButtonsModalOpen] = useState(false);
+  const [isListModalOpen, setIsListModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [expandedListMessageId, setExpandedListMessageId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
 
@@ -121,12 +133,12 @@ export const InboxPage: React.FC = () => {
       if (selectedConvId) fetchConversationDetails(selectedConvId);
     };
 
-    socketService.on('message:new', handleNewMessage);
-    socketService.on('conversation:updated', handleConvUpdated);
+    socketService.onMessage(handleNewMessage);
+    socketService.onConversationUpdated(handleConvUpdated);
 
     return () => {
-      socketService.off('message:new', handleNewMessage);
-      socketService.off('conversation:updated', handleConvUpdated);
+      socketService.offMessage();
+      socketService.offConversationUpdated();
     };
   }, [selectedConvId]);
 
@@ -155,6 +167,73 @@ export const InboxPage: React.FC = () => {
       console.error('Error sending message:', err);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleSendInteractiveButtons = async (payload: {
+    header?: string;
+    body: string;
+    footer?: string;
+    buttons: Array<{ id: string; title: string }>;
+  }) => {
+    if (!selectedConvId) return;
+    const res: any = await api.post('/messages/send', {
+      conversationId: selectedConvId,
+      content: payload.body,
+      header: payload.header,
+      footer: payload.footer,
+      buttons: payload.buttons,
+    });
+
+    if (res.data) {
+      setMessages((prev) => [...prev, res.data]);
+    }
+  };
+
+  const handleSendInteractiveList = async (payload: {
+    header?: string;
+    body: string;
+    footer?: string;
+    list: {
+      buttonText: string;
+      sections: Array<{
+        title: string;
+        rows: Array<{ id: string; title: string; description?: string }>;
+      }>;
+    };
+  }) => {
+    if (!selectedConvId) return;
+    const res: any = await api.post('/messages/send', {
+      conversationId: selectedConvId,
+      content: payload.body,
+      header: payload.header,
+      footer: payload.footer,
+      list: payload.list,
+    });
+
+    if (res.data) {
+      setMessages((prev) => [...prev, res.data]);
+    }
+  };
+
+  const handleSendPaymentLink = async (payload: {
+    amount: number;
+    description: string;
+    items?: any[];
+  }) => {
+    if (!selectedConvId) return;
+    const leadId = activeConversation?.customer?.leads?.[0]?.id;
+    const res: any = await api.post('/payments/in-chat-link', {
+      conversationId: selectedConvId,
+      amount: payload.amount,
+      description: payload.description,
+      items: payload.items,
+      leadId,
+    });
+
+    if (res?.data?.message) {
+      setMessages((prev) => [...prev, res.data.message]);
+      fetchConversationDetails(selectedConvId);
     }
   };
 
@@ -198,17 +277,17 @@ export const InboxPage: React.FC = () => {
           </div>
 
           <div className="flex gap-1 overflow-x-auto pb-1 text-[11px] font-semibold">
-            {['ALL', 'AI_ACTIVE', 'HUMAN_REQUIRED', 'RESOLVED'].map((status) => (
+            {['ALL', 'AI_ACTIVE', 'HUMAN_REQUIRED'].map((st) => (
               <button
-                key={status}
-                onClick={() => setFilterStatus(status)}
-                className={`px-2 py-1 rounded-md transition-colors whitespace-nowrap ${
-                  filterStatus === status
-                    ? 'bg-emerald-500 text-white'
-                    : 'text-slate-600 hover:bg-slate-200/60'
+                key={st}
+                onClick={() => setFilterStatus(st)}
+                className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
+                  filterStatus === st
+                    ? 'bg-emerald-500 text-slate-950 font-bold'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                {status === 'ALL' ? 'All' : status === 'AI_ACTIVE' ? '🤖 AI' : status === 'HUMAN_REQUIRED' ? '🧑‍💼 Needs Help' : '✅ Done'}
+                {st === 'ALL' ? 'All Chats' : st === 'AI_ACTIVE' ? '🤖 AI Active' : '👤 Human Queue'}
               </button>
             ))}
           </div>
@@ -216,53 +295,57 @@ export const InboxPage: React.FC = () => {
 
         {/* Conversation Items */}
         <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-          {conversations.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-400">No conversations found</div>
+          {isLoading ? (
+            <div className="p-4 text-center text-slate-400 text-xs">Loading conversations...</div>
+          ) : conversations.length === 0 ? (
+            <div className="p-6 text-center text-slate-400 text-xs">No conversations found</div>
           ) : (
             conversations.map((conv) => {
               const isSelected = conv.id === selectedConvId;
-              const isHumanReq = conv.status === 'HUMAN_REQUIRED';
+              const custAny = conv.customer as any;
+              const hasLead = custAny?.leads && custAny.leads.length > 0;
+              const leadStatus = hasLead ? custAny.leads[0]?.status : null;
 
               return (
                 <div
                   key={conv.id}
                   onClick={() => setSelectedConvId(conv.id)}
-                  className={`p-3 cursor-pointer transition-colors flex items-start gap-3 ${
-                    isSelected ? 'bg-emerald-50/70 border-l-4 border-emerald-500' : 'hover:bg-slate-100/60'
+                  className={`p-3 cursor-pointer transition-colors flex items-start gap-2.5 ${
+                    isSelected ? 'bg-emerald-50/60 border-l-4 border-emerald-500' : 'hover:bg-slate-100/60'
                   }`}
                 >
-                  <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center shrink-0 text-sm">
-                    {conv.customer?.name?.charAt(0) || 'C'}
+                  <div className="w-9 h-9 rounded-full bg-emerald-500/20 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">
+                    {conv.customer?.name ? conv.customer.name.slice(0, 2).toUpperCase() : 'WA'}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-slate-900 truncate">
-                        {conv.customer?.name || 'Customer'}
-                      </h4>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-bold text-xs text-slate-900 truncate">
+                        {conv.customer?.name || conv.customer?.phone || 'Customer'}
+                      </span>
                       <span className="text-[10px] text-slate-400">
                         {new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
 
-                    <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                      {conv.lastMessageText || 'New conversation'}
+                    <p className="text-xs text-slate-500 truncate mb-1">
+                      {conv.lastMessageText || 'No message yet'}
                     </p>
 
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      {isHumanReq ? (
-                        <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded flex items-center gap-0.5">
-                          <AlertTriangle className="w-2.5 h-2.5" /> Staff Needed
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {conv.status === 'AI_ACTIVE' ? (
+                        <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                          <Bot className="w-2.5 h-2.5" /> AI
                         </span>
                       ) : (
-                        <span className="text-[9px] font-semibold bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded">
-                          AI Active
+                        <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                          <UserCheck className="w-2.5 h-2.5" /> Human
                         </span>
                       )}
 
-                      {conv.unreadCount > 0 && (
-                        <span className="ml-auto w-4 h-4 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">
-                          {conv.unreadCount}
+                      {leadStatus && (
+                        <span className="text-[9px] font-bold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full">
+                          {leadStatus}
                         </span>
                       )}
                     </div>
@@ -274,43 +357,55 @@ export const InboxPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Middle: WhatsApp Chat Conversation Panel */}
-      <div className="flex-1 flex flex-col bg-[#EFEAE2] min-w-0 relative">
+      {/* 2. Middle: Active Chat Window */}
+      <div className="flex-1 flex flex-col h-full bg-white relative">
         {activeConversation ? (
           <>
-            {/* Chat Top Header */}
-            <div className="h-14 bg-white border-b border-slate-200 px-4 flex items-center justify-between">
+            {/* Chat Header */}
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-white">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-sm">
-                  {activeConversation.customer?.name?.charAt(0) || 'C'}
+                <div className="w-9 h-9 rounded-full bg-emerald-500/20 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                  {activeConversation.customer?.name ? activeConversation.customer.name.slice(0, 2).toUpperCase() : 'WA'}
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-slate-900 leading-tight">
-                    {activeConversation.customer?.name || 'Customer'}
-                  </h3>
-                  <p className="text-[10px] text-slate-500">{activeConversation.customer?.phone}</p>
+                  <h2 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                    {activeConversation.customer?.name}
+                    <span className="text-slate-400 text-xs font-normal">({activeConversation.customer?.phone})</span>
+                  </h2>
+                  <p className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Last active: {new Date(activeConversation.lastMessageAt).toLocaleTimeString()}
+                  </p>
                 </div>
               </div>
 
-              {/* Status Toggle Button */}
+              {/* Action Toolbar */}
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setIsPaymentModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 flex items-center gap-1.5 transition-colors shadow-2xs"
+                  title="Generate Razorpay / UPI Link"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>Send Payment Link</span>
+                </button>
+
+                <button
                   onClick={toggleHumanHandoff}
-                  className={`text-xs font-bold px-3 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 transition-colors ${
                     activeConversation.status === 'HUMAN_REQUIRED'
                       ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                      : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
                   }`}
                 >
                   {activeConversation.status === 'HUMAN_REQUIRED' ? (
                     <>
                       <UserCheck className="w-3.5 h-3.5" />
-                      <span>Human Assigned (Click to resume AI)</span>
+                      <span>Human (Resume AI)</span>
                     </>
                   ) : (
                     <>
                       <Bot className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>AI Active (Click to take over)</span>
+                      <span>AI (Take Over)</span>
                     </>
                   )}
                 </button>
@@ -318,9 +413,19 @@ export const InboxPage: React.FC = () => {
             </div>
 
             {/* Message Thread */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-3 whatsapp-chat-bg">
+            <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#EFEAE2]">
               {messages.map((m) => {
                 const isOutbound = m.direction === 'OUTBOUND';
+                let parsedMetadata: any = null;
+                try {
+                  parsedMetadata = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata;
+                } catch {
+                  parsedMetadata = null;
+                }
+
+                const isPaymentCard = parsedMetadata?.type === 'PAYMENT_LINK';
+                const isButtonsCard = parsedMetadata?.interactiveType === 'BUTTONS' || (parsedMetadata?.buttons && parsedMetadata.buttons.length > 0);
+                const isListCard = parsedMetadata?.interactiveType === 'LIST' || !!parsedMetadata?.list;
 
                 return (
                   <div
@@ -328,20 +433,126 @@ export const InboxPage: React.FC = () => {
                     className={`flex flex-col ${isOutbound ? 'items-end' : 'items-start'}`}
                   >
                     <div
-                      className={`max-w-[80%] sm:max-w-[70%] rounded-xl p-3 shadow-xs text-xs leading-relaxed whitespace-pre-wrap ${
+                      className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-3 shadow-xs text-xs leading-relaxed ${
                         isOutbound
-                          ? 'bg-[#DCF8C6] text-slate-900 rounded-tr-none'
-                          : 'bg-white text-slate-900 rounded-tl-none border border-slate-100'
+                          ? 'bg-[#DCF8C6] text-slate-900 rounded-tr-xs'
+                          : 'bg-white text-slate-900 rounded-tl-xs border border-slate-100'
                       }`}
                     >
+                      {/* Media image if attached */}
                       {m.mediaUrl && (
                         <img
                           src={m.mediaUrl}
                           alt="Product"
-                          className="w-full h-40 object-cover rounded-lg mb-2 shadow-xs"
+                          className="w-full h-44 object-cover rounded-xl mb-2 shadow-xs"
                         />
                       )}
-                      <p>{m.content}</p>
+
+                      {/* Header if present in metadata */}
+                      {parsedMetadata?.header && (
+                        <p className="font-extrabold text-xs text-slate-900 border-b border-black/10 pb-1 mb-1.5">
+                          {parsedMetadata.header}
+                        </p>
+                      )}
+
+                      {/* 1. Payment Link Card Bubble */}
+                      {isPaymentCard ? (
+                        <div className="space-y-2 py-1">
+                          <div className="flex items-center justify-between border-b border-emerald-900/10 pb-1.5">
+                            <span className="text-[11px] font-extrabold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                              <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                              Order #{parsedMetadata.orderNumber || 'Checkout'}
+                            </span>
+                            <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                              {parsedMetadata.status || 'PENDING'}
+                            </span>
+                          </div>
+
+                          <p className="whitespace-pre-wrap text-slate-800 text-xs">
+                            {m.content}
+                          </p>
+
+                          {parsedMetadata.paymentUrl && (
+                            <div className="pt-2">
+                              <a
+                                href={parsedMetadata.paymentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs py-2 px-3 rounded-xl text-center shadow-md flex items-center justify-center gap-1.5 transition-colors"
+                              >
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>Pay ₹{parsedMetadata.amount?.toLocaleString('en-IN')} via Razorpay / UPI</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ) : isButtonsCard ? (
+                        /* 2. Interactive Buttons Bubble */
+                        <div className="space-y-2">
+                          <p className="whitespace-pre-wrap">{m.content}</p>
+                          {parsedMetadata?.footer && (
+                            <p className="text-[10px] text-slate-500 italic border-t border-black/5 pt-1">
+                              {parsedMetadata.footer}
+                            </p>
+                          )}
+                          <div className="pt-1 space-y-1.5">
+                            {(parsedMetadata.buttons || []).map((btn: any, bIdx: number) => (
+                              <div
+                                key={bIdx}
+                                className="w-full bg-white/90 hover:bg-white border border-emerald-500/30 rounded-xl py-1.5 px-3 text-center text-xs font-bold text-emerald-700 shadow-2xs cursor-pointer transition-colors"
+                              >
+                                {btn.title || btn.text}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : isListCard ? (
+                        /* 3. Interactive List Menu Bubble */
+                        <div className="space-y-2">
+                          <p className="whitespace-pre-wrap">{m.content}</p>
+                          {parsedMetadata?.footer && (
+                            <p className="text-[10px] text-slate-500 italic border-t border-black/5 pt-1">
+                              {parsedMetadata.footer}
+                            </p>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => setExpandedListMessageId(expandedListMessageId === m.id ? null : m.id)}
+                            className="w-full mt-2 py-1.5 px-3 bg-white/90 hover:bg-white border border-teal-500/30 rounded-xl text-center text-xs font-bold text-teal-700 flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                          >
+                            <List className="w-3.5 h-3.5" />
+                            <span>{parsedMetadata.list?.buttonText || 'View Options'}</span>
+                            <ChevronDown className={`w-3 h-3 transition-transform ${expandedListMessageId === m.id ? 'rotate-180' : ''}`} />
+                          </button>
+
+                          {expandedListMessageId === m.id && parsedMetadata.list?.sections && (
+                            <div className="mt-2 bg-white rounded-xl shadow-md border border-slate-200 p-2.5 space-y-2 animate-in fade-in duration-150">
+                              {parsedMetadata.list.sections.map((sec: any, sIdx: number) => (
+                                <div key={sIdx} className="space-y-1">
+                                  <p className="text-[10px] font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded">
+                                    {sec.title}
+                                  </p>
+                                  {sec.rows?.map((r: any, rIdx: number) => (
+                                    <div key={rIdx} className="p-1 rounded-md border border-slate-100 hover:bg-slate-50 text-left">
+                                      <p className="font-bold text-slate-800 text-[11px]">{r.title}</p>
+                                      {r.description && (
+                                        <p className="text-[10px] text-slate-500">{r.description}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        /* Standard Text Bubble */
+                        <p className="whitespace-pre-wrap">{m.content}</p>
+                      )}
+
+                      {/* Timestamp & Read Receipts */}
                       <div className="flex items-center justify-end gap-1 mt-1 text-[9px] text-slate-400">
                         <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         {isOutbound && (
@@ -386,32 +597,66 @@ export const InboxPage: React.FC = () => {
               </div>
             )}
 
-            {/* Input Bar */}
-            <div className="p-2.5 bg-white border-t border-slate-200 flex items-center gap-2">
-              <button
-                onClick={() => setIsProductPickerOpen(!isProductPickerOpen)}
-                className="p-2 rounded-full hover:bg-slate-100 text-slate-600"
-                title="Attach Product Card"
-              >
-                <ShoppingBag className="w-5 h-5 text-emerald-600" />
-              </button>
+            {/* Input & Action Bar */}
+            <div className="p-2.5 bg-white border-t border-slate-200 flex flex-col gap-2">
+              {/* Quick Actions Ribbon */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setIsButtonsModalOpen(true)}
+                  className="px-2.5 py-1 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1 transition-colors shrink-0"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Interactive Buttons</span>
+                </button>
 
-              <input
-                type="text"
-                placeholder="Type WhatsApp reply or press Enter..."
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                className="flex-1 bg-slate-50 border border-slate-200 rounded-full px-4 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
-              />
+                <button
+                  type="button"
+                  onClick={() => setIsListModalOpen(true)}
+                  className="px-2.5 py-1 rounded-full bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 font-bold flex items-center gap-1 transition-colors shrink-0"
+                >
+                  <List className="w-3 h-3" />
+                  <span>List Menu</span>
+                </button>
 
-              <button
-                onClick={() => handleSendMessage()}
-                disabled={isSending || !inputText.trim()}
-                className="w-9 h-9 rounded-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 flex items-center justify-center disabled:opacity-40 transition-colors shadow-xs"
-              >
-                <Send className="w-4 h-4" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPaymentModalOpen(true)}
+                  className="px-2.5 py-1 rounded-full bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold flex items-center gap-1 transition-colors shrink-0"
+                >
+                  <CreditCard className="w-3 h-3" />
+                  <span>Send Payment Link</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsProductPickerOpen(!isProductPickerOpen)}
+                  className="px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold flex items-center gap-1 transition-colors shrink-0"
+                >
+                  <ShoppingBag className="w-3 h-3 text-emerald-600" />
+                  <span>Catalog</span>
+                </button>
+              </div>
+
+              {/* Chat Input Field */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Type WhatsApp reply or press Enter..."
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-full px-4 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                />
+
+                <button
+                  onClick={() => handleSendMessage()}
+                  disabled={isSending || !inputText.trim()}
+                  className="w-9 h-9 rounded-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 flex items-center justify-center disabled:opacity-40 transition-colors shadow-xs"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </>
         ) : (
@@ -442,6 +687,17 @@ export const InboxPage: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Quick Payment Action Button */}
+          <div>
+            <button
+              onClick={() => setIsPaymentModalOpen(true)}
+              className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all"
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>Create Payment Link</span>
+            </button>
           </div>
 
           {/* Lead Stage Selector */}
@@ -492,6 +748,31 @@ export const InboxPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modals */}
+      <InteractiveButtonsModal
+        isOpen={isButtonsModalOpen}
+        onClose={() => setIsButtonsModalOpen(false)}
+        onSend={handleSendInteractiveButtons}
+        customerName={activeConversation?.customer?.name}
+      />
+
+      <InteractiveListModal
+        isOpen={isListModalOpen}
+        onClose={() => setIsListModalOpen(false)}
+        onSend={handleSendInteractiveList}
+        customerName={activeConversation?.customer?.name}
+      />
+
+      <PaymentLinkModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        onSendPaymentLink={handleSendPaymentLink}
+        customerName={activeConversation?.customer?.name}
+        customerPhone={activeConversation?.customer?.phone}
+        products={products}
+        currency={currency}
+      />
     </div>
   );
 };

@@ -78,6 +78,9 @@ model Organization {
   auditLogs         AuditLog[]
   subscription      Subscription?
   payments          Payment[]
+  orders            StoreOrder[]
+  dripSequences     DripSequence[]
+  dripEnrollments   DripEnrollment[]
 }
 
 model Membership {
@@ -204,6 +207,8 @@ model Customer {
   leads             Lead[]
   aiConversations   AiConversation[]
   aiSearches        AiSearch[]
+  orders            StoreOrder[]
+  dripEnrollments   DripEnrollment[]
 
   @@unique([organizationId, phone])
 }
@@ -268,6 +273,8 @@ model Lead {
   product         Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
   assignedUser    User?        @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
   events          LeadEvent[]
+  orders          StoreOrder[]
+  dripEnrollments DripEnrollment[]
 }
 
 model LeadEvent {
@@ -555,5 +562,111 @@ model LoginAttempt {
   @@index([identifier])
   @@index([ipAddress])
   @@index([userId])
+}
+
+model StoreOrder {
+  id                String       @id @default(cuid())
+  organizationId    String
+  customerId        String
+  leadId            String?
+  conversationId    String?
+  orderNumber       String       @unique
+  amount            Float
+  currency          String       @default("INR")
+  status            String       @default("PENDING") // PENDING, PAID, CANCELLED, REFUNDED
+  description       String
+  paymentLinkId     String?
+  paymentShortUrl   String?
+  upiString         String?
+  razorpayPaymentId String?
+  items             String       @default("[]") // JSON string
+  paidAt            DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer          Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lead              Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([orderNumber])
+}
+
+model DripSequence {
+  id              String           @id @default(cuid())
+  organizationId  String
+  name            String
+  description     String?
+  triggerType     String           @default("LEAD_STATUS") // LEAD_STATUS, PRODUCT_INQUIRY, INACTIVITY, MANUAL
+  triggerStatus   String?          @default("INTERESTED") // e.g. INTERESTED, FOLLOW_UP
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps           DripStep[]
+  enrollments     DripEnrollment[]
+
+  @@index([organizationId])
+}
+
+model DripStep {
+  id              String           @id @default(cuid())
+  sequenceId      String
+  stepOrder       Int              @default(1)
+  delayMinutes    Int              @default(120) // e.g., 120 = 2 hours, 1440 = 24 hours, 4320 = 3 days
+  messageType     String           @default("TEXT") // TEXT, BUTTONS, TEMPLATE, PRODUCT
+  messageContent  String
+  mediaUrl        String?
+  buttonOptions   String           @default("[]") // JSON array of buttons
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  sequence        DripSequence     @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  logs            DripLog[]
+
+  @@index([sequenceId])
+}
+
+model DripEnrollment {
+  id                String         @id @default(cuid())
+  organizationId    String
+  sequenceId        String
+  customerId        String
+  leadId            String?
+  currentStepOrder  Int            @default(1)
+  status            String         @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED_REPLIED, CANCELLED_PURCHASED, PAUSED
+  nextRunAt         DateTime?
+  lastRunAt         DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  organization      Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sequence          DripSequence   @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  customer          Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lead              Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  logs              DripLog[]
+
+  @@index([organizationId, status])
+  @@index([sequenceId])
+  @@index([customerId])
+}
+
+model DripLog {
+  id                String         @id @default(cuid())
+  enrollmentId      String
+  stepId            String
+  status            String         @default("SENT") // SENT, FAILED, SKIPPED
+  whatsappMessageId String?
+  error             String?
+  sentAt            DateTime       @default(now())
+
+  enrollment        DripEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  step              DripStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([enrollmentId])
 }
 

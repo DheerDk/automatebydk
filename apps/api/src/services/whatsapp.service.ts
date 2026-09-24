@@ -13,7 +13,16 @@ export interface SendMessageOptions {
   type?: MessageType;
   mediaUrl?: string;
   location?: { latitude: number; longitude: number; name?: string; address?: string };
+  header?: string;
+  footer?: string;
   buttons?: Array<{ id: string; title: string }>;
+  list?: {
+    buttonText: string;
+    sections: Array<{
+      title: string;
+      rows: Array<{ id: string; title: string; description?: string }>;
+    }>;
+  };
   metadata?: any;
   conversationId?: string;
   customerId?: string;
@@ -42,13 +51,41 @@ export class WhatsAppService {
   }
 
   /**
-   * Send WhatsApp Message (Text, Image, Location, Buttons, Template, Interactive)
+   * Send WhatsApp Message (Text, Image, Location, Buttons, List, Template, Interactive)
    */
   public static async sendMessage(options: SendMessageOptions): Promise<{ whatsappMessageId: string; status: MessageStatus; content?: string; mediaUrl?: string }> {
-    const { organizationId, to, content, type = MessageType.TEXT, mediaUrl, location, buttons, metadata, conversationId, customerId } = options;
+    const {
+      organizationId,
+      to,
+      content,
+      type = MessageType.TEXT,
+      mediaUrl,
+      location,
+      header,
+      footer,
+      buttons,
+      list,
+      metadata = {},
+      conversationId,
+      customerId,
+    } = options;
 
     let whatsappMessageId = `mock_wa_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     let status: MessageStatus = MessageStatus.SENT;
+
+    // Build rich metadata for interactive messages
+    const enrichedMetadata = { ...metadata };
+    if (buttons && buttons.length > 0) {
+      enrichedMetadata.interactiveType = 'BUTTONS';
+      enrichedMetadata.buttons = buttons;
+      if (header) enrichedMetadata.header = header;
+      if (footer) enrichedMetadata.footer = footer;
+    } else if (list && list.sections && list.sections.length > 0) {
+      enrichedMetadata.interactiveType = 'LIST';
+      enrichedMetadata.list = list;
+      if (header) enrichedMetadata.header = header;
+      if (footer) enrichedMetadata.footer = footer;
+    }
 
     // Check if connected via Baileys QR Code session
     if (BaileysService.isConnected(organizationId)) {
@@ -59,7 +96,10 @@ export class WhatsAppService {
           content,
           mediaUrl,
           location,
+          header,
+          footer,
           buttons,
+          list,
         });
         whatsappMessageId = baileysRes.whatsappMessageId;
         status = MessageStatus.SENT;
@@ -84,7 +124,45 @@ export class WhatsAppService {
           to: to.replace(/\D/g, ''),
         };
 
-        if (type === MessageType.TEXT) {
+        if (buttons && buttons.length > 0) {
+          // Native Meta Interactive Quick Reply Buttons
+          payload.type = 'interactive';
+          payload.interactive = {
+            type: 'button',
+            ...(header ? { header: { type: 'text', text: header } } : {}),
+            body: { text: content },
+            ...(footer ? { footer: { text: footer } } : {}),
+            action: {
+              buttons: buttons.slice(0, 3).map((b, i) => ({
+                type: 'reply',
+                reply: {
+                  id: (b.id || `btn_${i + 1}`).substring(0, 256),
+                  title: (b.title || `Option ${i + 1}`).substring(0, 20),
+                },
+              })),
+            },
+          };
+        } else if (list && list.sections && list.sections.length > 0) {
+          // Native Meta Interactive List Menu
+          payload.type = 'interactive';
+          payload.interactive = {
+            type: 'list',
+            ...(header ? { header: { type: 'text', text: header } } : {}),
+            body: { text: content },
+            ...(footer ? { footer: { text: footer } } : {}),
+            action: {
+              button: (list.buttonText || 'Choose Option').substring(0, 20),
+              sections: list.sections.slice(0, 10).map((sec) => ({
+                title: (sec.title || 'Options').substring(0, 24),
+                rows: (sec.rows || []).slice(0, 10).map((row, rIdx) => ({
+                  id: (row.id || `row_${rIdx + 1}`).substring(0, 200),
+                  title: (row.title || `Item ${rIdx + 1}`).substring(0, 24),
+                  ...(row.description ? { description: row.description.substring(0, 72) } : {}),
+                })),
+              })),
+            },
+          };
+        } else if (type === MessageType.TEXT) {
           payload.type = 'text';
           payload.text = { preview_url: true, body: content };
         } else if (type === MessageType.IMAGE && mediaUrl) {
@@ -137,11 +215,11 @@ export class WhatsAppService {
           conversationId,
           customerId,
           direction: MessageDirection.OUTBOUND,
-          type: type as string,
+          type: (buttons?.length || list?.sections?.length) ? MessageType.INTERACTIVE : (type as string),
           status: status as string,
           content,
           mediaUrl,
-          metadata: metadata ? JSON.stringify(metadata) : null,
+          metadata: Object.keys(enrichedMetadata).length > 0 ? JSON.stringify(enrichedMetadata) : null,
           whatsappMessageId,
         },
       });

@@ -7,6 +7,7 @@ import { AiService } from '../services/ai.service.js';
 import { WhatsAppService } from '../services/whatsapp.service.js';
 import { AutomationService } from '../services/automation.service.js';
 import { NotificationService } from '../services/notification.service.js';
+import { DripService } from '../services/drip.service.js';
 import { CustomerIntent, ConversationStatus, LeadStatus, MessageDirection, MessageStatus, MessageType, AutomationTrigger } from '@chatflow/shared';
 
 export class WebhookController {
@@ -199,6 +200,13 @@ export class WebhookController {
         data: { lastInteractionAt: new Date() },
       });
     }
+
+    // Auto-cancel any active follow-up drip sequences since customer has replied!
+    await DripService.cancelEnrollmentsOnAction({
+      organizationId,
+      customerId: customer.id,
+      reason: 'REPLIED',
+    });
 
     // 2. Find or create Conversation
     let conversation = await prisma.conversation.findUnique({

@@ -4,6 +4,7 @@ import webhookRoutes from './webhook.routes.js';
 import qrRoutes from './qr.routes.js';
 import uploadRoutes from './upload.routes.js';
 import paymentRoutes from './payment.routes.js';
+import dripRoutes from './drip.routes.js';
 import { PaymentController } from '../controllers/payment.controller.js';
 import { ProductController } from '../controllers/product.controller.js';
 import { CategoryController } from '../controllers/category.controller.js';
@@ -101,13 +102,14 @@ tenantRouter.get('/conversations/:id', ConversationController.getById);
 tenantRouter.put('/conversations/:id/status', ConversationController.updateStatus);
 tenantRouter.post('/messages/send', MessageController.sendMessage);
 
-// Automations
+// Automations & Drip Follow-up Sequences
 tenantRouter.get('/automations', AutomationController.list);
 tenantRouter.post('/automations', AutomationController.create);
 tenantRouter.post('/automations/toggle-all', AutomationController.toggleAll);
 tenantRouter.patch('/automations/:id/toggle', AutomationController.toggleSingle);
 tenantRouter.put('/automations/:id', AutomationController.update);
 tenantRouter.delete('/automations/:id', AutomationController.delete);
+tenantRouter.use('/drip-sequences', dripRoutes);
 
 // Templates & Broadcast Campaigns
 tenantRouter.get('/templates', TemplateController.list);

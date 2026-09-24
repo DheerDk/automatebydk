@@ -272,20 +272,104 @@ export class PaymentService {
     const event = JSON.parse(rawBody);
     logger.info(`[Razorpay Webhook Event] ${event.event}`);
 
-    if (event.event === 'payment.captured' || event.event === 'order.paid') {
-      const paymentEntity = event.payload.payment.entity;
-      const notes = paymentEntity.notes || {};
-      const { organizationId, planTier, billingCycle } = notes;
+    if (event.event === 'payment.captured' || event.event === 'order.paid' || event.event === 'payment_link.paid') {
+      const paymentEntity = event.payload?.payment?.entity || event.payload?.payment_link?.entity;
+      const notes = paymentEntity?.notes || {};
+      const { organizationId, planTier, billingCycle, leadId, source } = notes;
 
+      // 1. Handle SaaS Subscription Plan Payment
       if (organizationId && planTier) {
         await this.verifyPaymentAndUpgrade({
           organizationId,
-          razorpay_order_id: paymentEntity.order_id,
+          razorpay_order_id: paymentEntity.order_id || paymentEntity.id,
           razorpay_payment_id: paymentEntity.id,
           razorpay_signature: signature,
           planTier,
           billingCycle: billingCycle || 'MONTHLY',
         });
+      }
+
+      // 2. Handle WhatsApp In-Chat Store Order Payment
+      const paymentLinkId = paymentEntity?.payment_link_id || paymentEntity?.id;
+      if (source === 'WHATSAPP_STORE' || paymentLinkId) {
+        const order = await prisma.storeOrder.findFirst({
+          where: {
+            OR: [
+              { paymentLinkId: paymentLinkId },
+              { id: notes.orderId || '' },
+            ],
+          },
+          include: {
+            customer: true,
+            organization: { include: { settings: true } },
+          },
+        });
+
+        if (order && order.status !== 'PAID') {
+          const now = new Date();
+          const paidOrder = await prisma.storeOrder.update({
+            where: { id: order.id },
+            data: {
+              status: 'PAID',
+              razorpayPaymentId: paymentEntity.id,
+              paidAt: now,
+            },
+          });
+
+          // Convert Lead if attached
+          if (order.leadId) {
+            await prisma.lead.update({
+              where: { id: order.leadId },
+              data: {
+                status: 'CONVERTED',
+                convertedAt: now,
+              },
+            });
+          }
+
+          // Auto-cancel drip sequences on purchase
+          const { DripService } = await import('./drip.service.js');
+          await DripService.cancelEnrollmentsOnAction({
+            organizationId: order.organizationId,
+            customerId: order.customerId,
+            reason: 'PURCHASED',
+          });
+
+          // Dispatch WhatsApp Confirmation Receipt
+          const currency = order.organization.settings?.currency || 'INR';
+          let receiptText = `🎉 *Payment Confirmed! Order #${order.orderNumber}*\n\n`;
+          receiptText += `Dear ${order.customer.name},\n`;
+          receiptText += `We have successfully received your payment of *${currency} ${order.amount.toLocaleString('en-IN')}*.\n\n`;
+          receiptText += `📦 *Order Summary:* ${order.description}\n`;
+          receiptText += `🆔 *Payment Ref:* \`${paymentEntity.id}\`\n`;
+          receiptText += `📅 *Date:* ${now.toLocaleString()}\n\n`;
+          receiptText += `Thank you for shopping with us! Our team is processing your order now.`;
+
+          const { WhatsAppService } = await import('./whatsapp.service.js');
+          await WhatsAppService.sendMessage({
+            organizationId: order.organizationId,
+            to: order.customer.phone,
+            content: receiptText,
+            header: 'Payment Received ✅',
+            footer: `${order.organization.name || 'AutoMate'} Order Confirmation`,
+            metadata: {
+              source: 'PAYMENT_RECEIPT',
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              amount: order.amount,
+            },
+          });
+
+          // Notify staff via Socket.IO
+          const { SocketServer } = await import('../sockets/index.js');
+          SocketServer.emitToOrg(order.organizationId, 'order:paid', {
+            order: paidOrder,
+            customerName: order.customer.name,
+            amount: order.amount,
+          });
+
+          logger.info(`[Store Payment] In-Chat Order #${order.orderNumber} marked as PAID for customer ${order.customer.phone}`);
+        }
       }
     }
 

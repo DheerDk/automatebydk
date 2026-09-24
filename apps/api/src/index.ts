@@ -10,6 +10,7 @@ import { errorHandler } from './middlewares/errorHandler.js';
 import { SocketServer } from './sockets/index.js';
 import { JobScheduler } from './jobs/scheduler.js';
 import { BaileysService } from './services/baileys.service.js';
+import { DripService } from './services/drip.service.js';
 import { ensureDatabaseReady } from './utils/dbInit.js';
 import { sanitizeInput } from './middlewares/sanitize.js';
 import { authLimiter } from './middlewares/rateLimiter.js';
@@ -92,6 +93,7 @@ app.use(errorHandler);
 SocketServer.initialize(server);
 JobScheduler.start();
 BaileysService.initAllSavedSessions();
+DripService.startDripWorker();
 ensureDatabaseReady().catch((err) => logger.error('DB ready check failed:', err));
 
 // Start HTTP Server
