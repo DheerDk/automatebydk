@@ -4,9 +4,6 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   WAMessage,
-  generateWAMessageFromContent,
-  prepareWAMessageMedia,
-  proto,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
@@ -345,145 +342,37 @@ export class BaileysService {
       });
     }
 
-    // Try sending native interactive button cards if buttons are provided and no location
-    if (buttons && buttons.length > 0 && !location) {
+    if (location) {
       try {
-        const nativeButtons: any[] = [];
-
-        // 1. Native Interactive Single-Select Menu Button (Pops up full menu sheet on tap)
-        nativeButtons.push({
-          name: 'single_select',
-          buttonParamsJson: JSON.stringify({
-            title: '📋 Open Store Menu',
-            sections: [
-              {
-                title: '⚡ Available Store Options',
-                rows: buttons.map((b: any, idx: number) => ({
-                  id: b.id || String(idx + 1),
-                  title: b.title || b.text || `Option ${idx + 1}`,
-                  description: b.description || `Select ${b.title || b.text}`,
-                })),
-              },
-            ],
-          }),
-        });
-
-        // 2. Direct 1-tap quick action buttons
-        buttons.slice(0, 2).forEach((b: any, idx: number) => {
-          const btnTitle = b.title || b.text || `Option ${idx + 1}`;
-          const btnId = b.id || String(idx + 1);
-          if (b.url) {
-            nativeButtons.push({
-              name: 'cta_url',
-              buttonParamsJson: JSON.stringify({
-                display_text: btnTitle,
-                url: b.url,
-                merchant_url: b.url,
-              }),
-            });
-          } else {
-            nativeButtons.push({
-              name: 'quick_reply',
-              buttonParamsJson: JSON.stringify({
-                display_text: btnTitle,
-                id: btnId,
-              }),
-            });
-          }
-        });
-
-        let headerObj: any = {
-          title: '',
-          subtitle: '',
-          hasMediaAttachment: false,
-        };
-
-        if (mediaUrl && (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) && session.sock?.waUploadToServer) {
-          try {
-            const media = await prepareWAMessageMedia(
-              { image: { url: mediaUrl } },
-              { upload: session.sock.waUploadToServer }
-            );
-            if (media?.imageMessage) {
-              headerObj = {
-                title: '',
-                subtitle: '',
-                hasMediaAttachment: true,
-                imageMessage: media.imageMessage,
-              };
-            }
-          } catch (mediaErr: any) {
-            logger.warn(`[Baileys] Media header prep failed: ${mediaErr.message}`);
-          }
-        }
-
-        const interactiveMsg = generateWAMessageFromContent(
-          jid,
-          {
-            viewOnceMessage: {
-              message: {
-                messageContextInfo: {
-                  deviceListMetadata: {},
-                  deviceListMetadataVersion: 2,
-                },
-                interactiveMessage: proto.Message.InteractiveMessage.create({
-                  body: proto.Message.InteractiveMessage.Body.create({
-                    text: content,
-                  }),
-                  footer: proto.Message.InteractiveMessage.Footer.create({
-                    text: '⚡ Tap "Open Store Menu" or reply with number',
-                  }),
-                  header: proto.Message.InteractiveMessage.Header.create(headerObj),
-                  nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                    buttons: nativeButtons,
-                  }),
-                }),
-              },
-            },
-          },
-          { userJid: session.sock?.user?.id }
-        );
-
-        await session.sock.relayMessage(jid, interactiveMsg.message, { messageId: interactiveMsg.key.id });
-        sentMsg = interactiveMsg;
-      } catch (nativeBtnErr: any) {
-        logger.warn(`[Baileys] Native button send failed (${nativeBtnErr.message}), falling back to standard formatted message.`);
-      }
-    }
-
-    if (!sentMsg) {
-      if (location) {
-        try {
-          sentMsg = await session.sock.sendMessage(jid, {
-            location: {
-              degreesLatitude: location.latitude || 12.9716,
-              degreesLongitude: location.longitude || 77.5946,
-              name: location.name || 'Store Location',
-              address: location.address || formattedContent,
-            },
-          });
-        } catch (locErr) {
-          sentMsg = await session.sock.sendMessage(jid, {
-            text: `📍 *Store Location:*\n${formattedContent}`,
-          });
-        }
-      } else if (mediaUrl && (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://'))) {
-        try {
-          sentMsg = await session.sock.sendMessage(jid, {
-            image: { url: mediaUrl },
-            caption: formattedContent,
-          });
-        } catch (mediaErr: any) {
-          logger.warn(`[Baileys] Media send failed (${mediaErr.message}), falling back to text message.`);
-          sentMsg = await session.sock.sendMessage(jid, {
-            text: `${formattedContent}\n\n📷 Promo Image: ${mediaUrl}`,
-          });
-        }
-      } else {
         sentMsg = await session.sock.sendMessage(jid, {
-          text: formattedContent,
+          location: {
+            degreesLatitude: location.latitude || 12.9716,
+            degreesLongitude: location.longitude || 77.5946,
+            name: location.name || 'Store Location',
+            address: location.address || formattedContent,
+          },
+        });
+      } catch (locErr) {
+        sentMsg = await session.sock.sendMessage(jid, {
+          text: `📍 *Store Location:*\n${formattedContent}`,
         });
       }
+    } else if (mediaUrl && (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://'))) {
+      try {
+        sentMsg = await session.sock.sendMessage(jid, {
+          image: { url: mediaUrl },
+          caption: formattedContent,
+        });
+      } catch (mediaErr: any) {
+        logger.warn(`[Baileys] Media send failed (${mediaErr.message}), falling back to text message.`);
+        sentMsg = await session.sock.sendMessage(jid, {
+          text: `${formattedContent}\n\n📷 Promo Image: ${mediaUrl}`,
+        });
+      }
+    } else {
+      sentMsg = await session.sock.sendMessage(jid, {
+        text: formattedContent,
+      });
     }
 
     const whatsappMessageId = sentMsg?.key?.id || `baileys_out_${Date.now()}`;
