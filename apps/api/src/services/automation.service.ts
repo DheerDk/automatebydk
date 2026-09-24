@@ -24,9 +24,12 @@ export class AutomationService {
       welcomeText: `👋 *Welcome to our Store!*\n\nHow can we help you today? Reply with a number or tap an option:\n\n1️⃣ 🛍️ *Browse Trending Products*\n2️⃣ 🔍 *Search Specific Item*\n3️⃣ 🏷️ *Exclusive VIP Discount Code*\n4️⃣ 📍 *Store Location & Timings*\n5️⃣ 🌐 *Visit Official Online Website*\n6️⃣ 🧑‍💼 *Talk to Store Manager*`,
       welcomeMediaUrl: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&auto=format&fit=crop&q=80',
       welcomeButtons: [
-        { id: '1', title: '🛍️ Browse Products' },
-        { id: '3', title: '🏷️ VIP Coupon' },
-        { id: '6', title: '🧑‍💼 Store Manager' },
+        { id: '1', title: '🛍️ Browse Products', description: 'Explore trending collection' },
+        { id: '2', title: '🔍 Search Item', description: 'Search any specific item' },
+        { id: '3', title: '🏷️ VIP Coupon', description: 'Get exclusive 20% discount' },
+        { id: '4', title: '📍 Store Location', description: 'View address and timings' },
+        { id: '5', title: '🌐 Online Website', description: 'Visit our official website' },
+        { id: '6', title: '🧑‍💼 Store Manager', description: 'Talk directly to human support' },
       ],
       branches: [
         {

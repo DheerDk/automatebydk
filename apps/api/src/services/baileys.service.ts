@@ -348,26 +348,48 @@ export class BaileysService {
     // Try sending native interactive button cards if buttons are provided and no location
     if (buttons && buttons.length > 0 && !location) {
       try {
-        const interactiveButtons = buttons.map((b: any, idx: number) => {
+        const nativeButtons: any[] = [];
+
+        // 1. Native Interactive Single-Select Menu Button (Pops up full menu sheet on tap)
+        nativeButtons.push({
+          name: 'single_select',
+          buttonParamsJson: JSON.stringify({
+            title: '📋 Open Store Menu',
+            sections: [
+              {
+                title: '⚡ Available Store Options',
+                rows: buttons.map((b: any, idx: number) => ({
+                  id: b.id || String(idx + 1),
+                  title: b.title || b.text || `Option ${idx + 1}`,
+                  description: b.description || `Select ${b.title || b.text}`,
+                })),
+              },
+            ],
+          }),
+        });
+
+        // 2. Direct 1-tap quick action buttons
+        buttons.slice(0, 2).forEach((b: any, idx: number) => {
           const btnTitle = b.title || b.text || `Option ${idx + 1}`;
           const btnId = b.id || String(idx + 1);
           if (b.url) {
-            return {
+            nativeButtons.push({
               name: 'cta_url',
               buttonParamsJson: JSON.stringify({
                 display_text: btnTitle,
                 url: b.url,
                 merchant_url: b.url,
               }),
-            };
+            });
+          } else {
+            nativeButtons.push({
+              name: 'quick_reply',
+              buttonParamsJson: JSON.stringify({
+                display_text: btnTitle,
+                id: btnId,
+              }),
+            });
           }
-          return {
-            name: 'quick_reply',
-            buttonParamsJson: JSON.stringify({
-              display_text: btnTitle,
-              id: btnId,
-            }),
-          };
         });
 
         let headerObj: any = {
@@ -409,11 +431,11 @@ export class BaileysService {
                     text: content,
                   }),
                   footer: proto.Message.InteractiveMessage.Footer.create({
-                    text: '⚡ Tap button or reply with number',
+                    text: '⚡ Tap "Open Store Menu" or reply with number',
                   }),
                   header: proto.Message.InteractiveMessage.Header.create(headerObj),
                   nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                    buttons: interactiveButtons,
+                    buttons: nativeButtons,
                   }),
                 }),
               },
